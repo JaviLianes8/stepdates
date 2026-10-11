@@ -8,4 +8,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.1.0]
 
-- First release.
+- First release: `date_range` iterates dates by calendar day, week, month or year, with a
+  `stop` or a `count`, an `inclusive` endpoint flag, signed step sizes for backward ranges,
+  and end-of-month and leap-day clamping anchored on the start date.
