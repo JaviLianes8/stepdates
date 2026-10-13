@@ -74,7 +74,11 @@ def test_end_of_month_matches_rrule_last_day(seed: int) -> None:
 @pytest.mark.parametrize("unit", list(UNITS))
 def test_aware_wall_clock_matches_rrule(zone: str, unit: str) -> None:
     zoneinfo = pytest.importorskip("zoneinfo")
-    start = datetime(2026, 1, 28, 2, 15, tzinfo=zoneinfo.ZoneInfo(zone))
+    try:
+        tz = zoneinfo.ZoneInfo(zone)
+    except zoneinfo.ZoneInfoNotFoundError:  # pragma: no cover - no tz database installed
+        pytest.skip("no time zone database")
+    start = datetime(2026, 1, 28, 2, 15, tzinfo=tz)
     expected = rrule.rrule(UNITS[unit], dtstart=start, count=60)
     got = list(date_range(start, count=60, step=unit))
     assert [value.replace(tzinfo=None) for value in got] == [
