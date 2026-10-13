@@ -4,24 +4,35 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stepdates"
-version = "0.1.0"
+version = "0.2.0"
 description = "A range() for dates: iterate from start to stop by calendar day, week, month or year"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Javier Lianes", email = "javier@lianes8studio.com" }]
-keywords = []
+keywords = ["date", "range", "calendar", "month", "recurrence", "rfc5545", "iso8601"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
     "Typing :: Typed",
 ]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest", "build", "twine"]
+dev = ["ruff", "mypy", "pytest", "build", "twine", "python-dateutil", "tzdata"]
+
+[project.scripts]
+stepdates = "stepdates._cli:main"
 
 [project.urls]
 Homepage = "https://lianes8studio.com"
@@ -44,6 +55,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
+mypy_path = "src"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

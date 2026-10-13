@@ -117,3 +117,24 @@ def test_rejects_negative_count() -> None:
 def test_validation_happens_before_iteration() -> None:
     with pytest.raises(ValueError):
         date_range(date(2026, 1, 1), step="never")
+
+
+def test_quarter_step_is_three_months() -> None:
+    result = list(date_range(date(2025, 11, 30), count=3, step="quarter"))
+    assert result == [date(2025, 11, 30), date(2026, 2, 28), date(2026, 5, 30)]
+
+
+def test_terms_are_anchored_on_start_for_multi_month_steps() -> None:
+    result = list(date_range(date(2026, 8, 31), count=4, step="2 months"))
+    assert result == [date(2026, 8, 31), date(2026, 10, 31), date(2026, 12, 31), date(2027, 2, 28)]
+
+
+def test_week_steps_keep_the_iso_weekday() -> None:
+    result = list(date_range(date(2026, 12, 28), count=3, step="week"))
+    assert [day.isocalendar()[1:] for day in result] == [(53, 1), (1, 1), (2, 1)]
+
+
+def test_the_result_is_lazy() -> None:
+    values = date_range(date(2026, 1, 1), count=10**12)
+    assert next(values) == date(2026, 1, 1)
+    assert next(values) == date(2026, 1, 2)
