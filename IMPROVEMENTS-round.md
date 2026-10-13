@@ -7,10 +7,10 @@ Progress:
 - [x] `end_of_month` anchoring and `shift`
 - [x] `datetime` support: type kept, wall clock time, DST gaps and overlaps
 - [x] Strict validation and clean ends at the edges of the supported years
-- [ ] Command line tool (`stepdates`, `python -m stepdates`)
+- [x] Command line tool (`stepdates`, `python -m stepdates`)
 - [ ] Contracts: RFC examples, dateutil oracle, typing, README, wheel e2e
 - [ ] Mutation run (guards removed one at a time, each must fail the suite)
-- [ ] Docs: README, CHANGELOG, docstrings, packaging metadata
+- [x] Docs: README, CHANGELOG, docstrings, packaging metadata
 - [ ] Gates: ruff format, ruff check, mypy --strict, pytest
 - [ ] Independent review findings fixed with regression tests
 - [ ] Pull request opened, guard clean

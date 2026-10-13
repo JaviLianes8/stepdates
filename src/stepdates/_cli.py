@@ -81,5 +81,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         # The reader went away (``| head``); stop quietly, as other filters do.
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, sys.stdout.fileno())
+        os.close(devnull)
         return 0
     return 0
