@@ -122,7 +122,7 @@ def test_shift_end_of_month() -> None:
 
 
 def test_shift_rejects_bad_input() -> None:
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="must be a date"):
         shift("2026-01-01", "day")  # type: ignore[type-var]
     with pytest.raises(ValueError):
         shift(date(2026, 1, 1), "fortnight")
