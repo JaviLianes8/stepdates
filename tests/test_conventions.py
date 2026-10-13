@@ -133,3 +133,14 @@ def test_shift_raises_outside_the_supported_years() -> None:
         shift(date(9999, 12, 31), "month")
     with pytest.raises(OverflowError, match="1 to 9999"):
         shift(date(1, 1, 1), "-1 day")
+
+
+def test_end_of_month_terms_are_never_skipped() -> None:
+    start = date(2026, 1, 31)
+    clamped = list(date_range(start, count=4, step="month", end_of_month=True))
+    skipped = list(date_range(start, count=4, step="month", end_of_month=True, invalid="skip"))
+    assert (
+        skipped
+        == clamped
+        == [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31), date(2026, 4, 30)]
+    )

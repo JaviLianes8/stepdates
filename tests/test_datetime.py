@@ -105,3 +105,10 @@ def test_date_and_datetime_cannot_mix() -> None:
 def test_naive_and_aware_cannot_mix() -> None:
     with pytest.raises(TypeError, match="naive"):
         date_range(datetime(2026, 1, 1), datetime(2026, 2, 1, tzinfo=timezone.utc))
+
+
+def test_naive_datetimes_are_never_skipped() -> None:
+    # A naive value has no zone, so no wall time is missing, whatever the machine's zone.
+    for month, day in [(3, 28), (3, 8), (10, 24)]:
+        start = datetime(2026, month, day, 2, 30)
+        assert len(list(date_range(start, count=3, invalid="skip"))) == 3
