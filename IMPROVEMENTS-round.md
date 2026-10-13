@@ -8,12 +8,12 @@ Progress:
 - [x] `datetime` support: type kept, wall clock time, DST gaps and overlaps
 - [x] Strict validation and clean ends at the edges of the supported years
 - [x] Command line tool (`stepdates`, `python -m stepdates`)
-- [ ] Contracts: RFC examples, dateutil oracle, typing, README, wheel e2e
-- [ ] Mutation run (guards removed one at a time, each must fail the suite)
+- [x] Contracts: RFC examples, dateutil oracle, typing, README, wheel e2e
+- [x] Mutation run (guards removed one at a time, each must fail the suite)
 - [x] Docs: README, CHANGELOG, docstrings, packaging metadata
-- [ ] Gates: ruff format, ruff check, mypy --strict, pytest
-- [ ] Independent review findings fixed with regression tests
-- [ ] Pull request opened, guard clean
+- [x] Gates: ruff format, ruff check, mypy --strict, pytest
+- [x] Independent review findings fixed with regression tests
+- [x] Pull request opened, guard clean
 
 ## Starting point
 
@@ -94,4 +94,34 @@ call away).
 
 ## Verification
 
-Filled in at the end of the round.
+- Gates: `ruff format --check .`, `ruff check .`, `mypy --strict src` (also `src tests`) and
+  `pytest` exit 0 on Windows with Python 3.13 (1857 passed, 1 skipped: the wheel e2e). On a
+  second machine with Python 3.14, a fresh clone, the RFC texts fetched by the script and
+  `STEPDATES_E2E=1`, the whole suite passes with nothing skipped: it builds the wheel and the
+  sdist, checks that no RFC text or tests ship in them, installs the wheel in a fresh venv,
+  drives the API from an empty folder, and runs the installed `stepdates` script and
+  `python -m stepdates`.
+- Ground truth: the RFC 5545 example sequences (daily, every 10 days, weekly, daily until with
+  the real UTC `UNTIL`, February 30 ignored) pass, and the cited lines and rules are checked
+  against the fetched RFC texts. The RFC 3339 duration rules are read from the fetched text,
+  and every ordering of the Y, M, W and D designators is checked against them.
+- Oracle: python-dateutil 2.9 (tests only) agrees on 400 seeds each for `invalid="skip"` with
+  a count (`rrule` COUNT) and with an inclusive stop (`rrule` UNTIL), for clamping in both
+  directions (`relativedelta`) and for `end_of_month` (`rrule(bymonthday=-1)`), and on wall
+  clock times for aware datetimes in New York, Madrid and Lord Howe (half-hour DST).
+- Mutations: 67 mutants (step grammar and units, the ISO duration rules, ASCII digits, timedelta
+  checks, month arithmetic, clamping, the year bounds, fold reset, gap detection, instant
+  comparison, every argument check, skip and stop logic, `shift`, and every command line flag,
+  parser, format check, exit code and pipe rule), applied one at a time with the bytecode cache
+  disabled and purged before each run: all killed. Three first drafts were equivalent (a
+  `<=` next to an equality branch, a `>=` on a day that cannot pass the month end, and an
+  aware comparison that already ignores fold within one zone) and were replaced. The baseline
+  was green before and after.
+- Independent review: 13 findings. Fixed with regression tests: the duration grammar now
+  rejects a day part straight after years (`P1Y1D`, `P0Y3D`); counts and durations take ASCII
+  digits only; a reader that closes the pipe on Windows (EINVAL) ends quietly, checked with a
+  real subprocess; a bad `--format` exits 2; dates are parsed before datetimes, so a compact
+  date stays a date; `--step -P1M` works without an equals sign; the grammar test now drives
+  the parser; the UNTIL example uses the RFC's UTC bound; the overlap test starts on a real
+  fall-back day; `inclusive` and `end_of_month` must be booleans; an aware `stop` is compared
+  as an instant. The Python floor stays 3.10, as on `main`.
