@@ -96,3 +96,16 @@ def test_date_subclasses_keep_their_type() -> None:
     assert all(type(value) is Day for value in result)
     assert list(date_range(Day(2026, 1, 1), count=2))[1] == date(2026, 1, 2)
     assert type(list(date_range(Day(2026, 1, 1), count=2))[1]) is Day
+
+
+@pytest.mark.parametrize("flag", ["inclusive", "end_of_month"])
+def test_flags_must_be_bools(flag: str) -> None:
+    with pytest.raises(TypeError, match=f"{flag} must be a bool"):
+        date_range(date(2026, 1, 31), date(2026, 5, 1), step="month", **{flag: "no"})  # type: ignore[arg-type]
+
+
+def test_shift_flag_must_be_a_bool() -> None:
+    from stepdates import shift
+
+    with pytest.raises(TypeError, match="end_of_month must be a bool"):
+        shift(date(2026, 1, 31), "month", end_of_month=1)  # type: ignore[arg-type]

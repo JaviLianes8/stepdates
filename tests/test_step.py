@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from datetime import timedelta
 
 import pytest
@@ -47,7 +48,7 @@ def test_unit_words(text: str, expected: Step) -> None:
         ("P1Y6M", Step(18, 0)),
         ("-P1Y6M", Step(-18, 0)),
         ("p3m", Step(3, 0)),
-        ("P0Y3D", Step(0, 3)),
+        ("P1Y2M", Step(14, 0)),
     ],
 )
 def test_iso_8601_durations(text: str, expected: Step) -> None:
@@ -56,14 +57,17 @@ def test_iso_8601_durations(text: str, expected: Step) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["", "P", "PT1H", "P1DT1H", "P1W2D", "P1D1M", "P1M1Y", "1M", "P-1M", "P1.5M", "fortnight"],
+    [
+        *["", "P", "PT1H", "P1DT1H", "P1W2D", "P1D1M", "P1M1Y", "1M", "P-1M", "P1.5M"],
+        *["fortnight", "P0Y3D", "P1Y1D", "P1W1Y", "\u0662 weeks", "P\u0662M", "\uff13 days"],
+    ],
 )
 def test_malformed_steps_are_rejected(text: str) -> None:
     with pytest.raises(ValueError, match="invalid step"):
         parse_step(text)
 
 
-@pytest.mark.parametrize("text", ["P1M2D", "P1Y1D", "-P1Y2M3D"])
+@pytest.mark.parametrize("text", ["P1M2D", "P1Y1M1D", "-P1Y2M3D"])
 def test_durations_mixing_months_and_days_are_rejected(text: str) -> None:
     with pytest.raises(ValueError, match="no single order"):
         parse_step(text)
@@ -100,3 +104,24 @@ def test_other_types_are_rejected(step: object) -> None:
 def test_direction() -> None:
     assert Step(1, 0).forward and Step(0, 1).forward
     assert not Step(-1, 0).forward and not Step(0, -1).forward
+
+
+# The date part of the RFC 3339 Appendix A grammar, written out by hand: a week stands
+# alone; otherwise years, months and days come in that order, and days follow months only.
+GRAMMATICAL = {"W", "D", "M", "MD", "Y", "YM", "YMD"}
+
+
+@pytest.mark.parametrize(
+    "letters",
+    sorted({"".join(p) for n in (1, 2, 3) for p in itertools.permutations("YMWD", n)}),
+)
+def test_every_designator_order_follows_the_grammar(letters: str) -> None:
+    text = "P" + "".join(f"1{letter}" for letter in letters)
+    if letters not in GRAMMATICAL:
+        with pytest.raises(ValueError, match="invalid step"):
+            parse_step(text)
+    elif "D" in letters and letters != "D":
+        with pytest.raises(ValueError, match="no single order"):
+            parse_step(text)
+    else:
+        assert parse_step(text) != Step(0, 0)

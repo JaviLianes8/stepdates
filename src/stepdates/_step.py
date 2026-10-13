@@ -10,13 +10,14 @@ _UNITS = ("day", "week", "month", "quarter", "year")
 _UNIT_DAYS = {"day": 1, "week": 7}
 _UNIT_MONTHS = {"month": 1, "quarter": 3, "year": 12}
 _WORDS = re.compile(
-    r"^\s*(?P<count>[+-]?\d+)?\s*(?P<unit>day|week|month|quarter|year)s?\s*$",
-    re.IGNORECASE,
+    r"^\s*(?P<count>[+-]?[0-9]+)?\s*(?P<unit>day|week|month|quarter|year)s?\s*$",
+    re.IGNORECASE | re.ASCII,
 )
 # RFC 3339 Appendix A duration grammar, date part only, with the sign of RFC 5545 3.3.6.
 _DURATION = re.compile(
-    r"^(?P<sign>[+-])?P(?:(?P<weeks>\d+)W|(?:(?P<years>\d+)Y)?(?:(?P<months>\d+)M)?"
-    r"(?:(?P<days>\d+)D)?)$"
+    r"^(?P<sign>[+-])?P(?:(?P<weeks>[0-9]+)W"
+    r"|(?:(?P<years>[0-9]+)Y)?(?:(?P<months>[0-9]+)M)?(?:(?P<days>[0-9]+)D)?)$",
+    re.ASCII,
 )
 
 
@@ -71,6 +72,8 @@ def _from_duration(step: str) -> Step | None:
     match = _DURATION.match(step.strip().upper())
     if match is None or not any(match.group(k) for k in ("weeks", "years", "months", "days")):
         return None
+    if match.group("years") and match.group("days") and not match.group("months"):
+        return None  # the grammar lets days follow months only
     sign = -1 if match.group("sign") == "-" else 1
     if match.group("weeks"):
         return Step(0, sign * 7 * int(match.group("weeks")))

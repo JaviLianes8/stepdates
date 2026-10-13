@@ -99,3 +99,8 @@ def test_no_em_dash_in_any_shipped_text() -> None:
 def test_every_source_file_stays_under_two_hundred_lines() -> None:
     for path in _shipped():
         assert len(path.read_text(encoding="utf-8").splitlines()) <= 200, path
+
+
+def test_sources_are_ascii() -> None:
+    for path in [*ROOT.glob("src/**/*.py"), *ROOT.glob("tests/*.py"), *ROOT.glob("scripts/*")]:
+        assert path.read_text(encoding="utf-8").isascii(), path

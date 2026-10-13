@@ -71,12 +71,23 @@ def test_a_start_inside_a_gap_is_still_the_first_value() -> None:
 
 
 def test_overlap_terms_take_the_first_occurrence() -> None:
-    # RFC 5545 3.3.5: New York 2007-11-04 01:30 means 01:30 EDT, the first one.
-    start = datetime(2007, 11, 3, 1, 30, tzinfo=NEW_YORK, fold=1)
-    result = list(date_range(start, count=2))
+    # RFC 5545 3.3.5: New York 01:30 on a fall-back day means 01:30 EDT, the first one.
+    # 52 weeks after 2007-11-04 is 2008-11-02, the next fall-back day.
+    start = datetime(2007, 11, 4, 1, 30, tzinfo=NEW_YORK, fold=1)
+    result = list(date_range(start, count=2, step="52 weeks"))
     assert result[0].fold == 1
-    assert result[1].fold == 0
+    assert result[0].utcoffset().total_seconds() == -5 * 3600  # type: ignore[union-attr]
+    assert (result[1].month, result[1].day, result[1].fold) == (11, 2, 0)
     assert result[1].utcoffset().total_seconds() == -4 * 3600  # type: ignore[union-attr]
+
+
+def test_an_aware_stop_is_compared_as_an_instant() -> None:
+    # 01:30 EST (fold=1) is an hour after 01:30 EDT (fold=0) on the same wall clock.
+    start = datetime(2007, 11, 4, 1, 30, tzinfo=NEW_YORK, fold=1)
+    stop = datetime(2007, 11, 4, 1, 30, tzinfo=NEW_YORK)
+    assert list(date_range(start, stop, step="-1 day")) == [start]
+    assert list(date_range(stop, start, step="day")) == [stop]
+    assert list(date_range(start, stop, step="day")) == []
 
 
 def test_month_steps_reset_fold_too() -> None:

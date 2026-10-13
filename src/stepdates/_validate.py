@@ -24,6 +24,12 @@ def check_stop(start: date, stop: object) -> None:
         raise TypeError("start and stop must both be naive or both be aware")
 
 
+def check_flags(**flags: object) -> None:
+    for name, value in flags.items():
+        if not isinstance(value, bool):
+            raise TypeError(f"{name} must be a bool, not {type(value).__name__}")
+
+
 def check_end_of_month(start: date, step: Step, end_of_month: bool) -> None:
     if not end_of_month:
         return

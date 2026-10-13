@@ -110,7 +110,8 @@ print([d.day for d in date_range(start, count=3, invalid="skip")])
 Every term after `start` has `fold=0`, so a wall time that happens twice (when the clocks go
 back) means its first occurrence, and a wall time inside a gap is read with the offset in force
 before the gap. Both are the RFC 5545 readings, and both are what `astimezone()` does with
-`fold=0`. `start` itself is returned as given.
+`fold=0`. `start` itself is returned as given. An aware `stop` is compared as an instant,
+so 01:30 before the clocks go back comes before 01:30 after, even in the same zone.
 
 ## Edges of the calendar
 
@@ -133,8 +134,12 @@ $ stepdates 2026-01-31 --count 3 --step month --skip-invalid --format "%d %b %Y"
 
 `stepdates START [STOP] [--count N] [--step STEP] [--inclusive] [--skip-invalid]
 [--end-of-month] [--format FMT]` prints one value per line (ISO 8601 unless `--format` gives a
-`strftime` pattern). START and STOP are ISO 8601 dates or datetimes. Bad input exits with
-status 2, a count that runs past year 9999 with status 1. `python -m stepdates` does the same.
+`strftime` pattern). START and STOP are ISO 8601 dates or datetimes as Python's
+`fromisoformat` reads them (compact forms such as `20260131` need Python 3.11 or later). A step
+that starts with a dash works as is: `--step -P1M`. Bad input, including a bad `--format`,
+exits with status 2; a count that runs past year 9999 exits with status 1 after the values that
+fit. A reader that stops early (`| head`) ends the output quietly. `python -m stepdates` does
+the same.
 
 ## Why
 

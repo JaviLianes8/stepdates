@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
+import re
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime
@@ -14,18 +16,32 @@ from stepdates._range import date_range
 
 def _when(text: str) -> date:
     try:
-        if len(text) == 10:
-            return date.fromisoformat(text)
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    try:
         return datetime.fromisoformat(text)
     except ValueError:
         raise argparse.ArgumentTypeError(f"not an ISO 8601 date or datetime: {text!r}") from None
 
 
 def _count(text: str) -> int:
-    try:
-        return int(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}") from None
+    if not re.fullmatch(r"[+-]?[0-9]+", text):
+        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}")
+    return int(text)
+
+
+def _join_negative_steps(argv: Sequence[str]) -> list[str]:
+    # argparse reads "-P1M" as an option; glue a dash-led step value to its flag.
+    joined: list[str] = []
+    rest = iter(argv)
+    for arg in rest:
+        if arg in ("-s", "--step"):
+            value = next(rest, None)
+            joined.append(arg if value is None else f"--step={value}")
+        else:
+            joined.append(arg)
+    return joined
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -55,7 +71,12 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for ``stepdates`` and ``python -m stepdates``; returns the exit code."""
     parser = _parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_join_negative_steps(sys.argv[1:] if argv is None else argv))
+    if args.format:
+        try:
+            args.start.strftime(args.format)
+        except ValueError as error:
+            parser.error(f"invalid --format {args.format!r}: {error}")
     try:
         values = date_range(
             args.start,
@@ -77,8 +98,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.flush()
         print(f"stepdates: {error}", file=sys.stderr)
         return 1
-    except BrokenPipeError:
-        # The reader went away (``| head``); stop quietly, as other filters do.
+    except OSError as error:
+        # The reader went away (``| head``). Windows reports EINVAL rather than EPIPE.
+        if not isinstance(error, BrokenPipeError) and error.errno != errno.EINVAL:
+            raise
         devnull = os.open(os.devnull, os.O_WRONLY)
         os.dup2(devnull, sys.stdout.fileno())
         os.close(devnull)

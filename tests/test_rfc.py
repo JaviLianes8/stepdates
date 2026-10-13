@@ -8,7 +8,7 @@ checked against them, so a sequence cannot drift from its source.
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -47,10 +47,17 @@ def test_weekly_for_ten_occurrences() -> None:
 
 
 def test_daily_until_is_inclusive() -> None:
-    # "Daily until December 24, 1997" with UNTIL=19971224T000000Z, 9:00 AM local starts:
-    # the last instance is December 23.
-    result = list(date_range(datetime(1997, 9, 2, 9), datetime(1997, 12, 23, 9), inclusive=True))
+    # "Daily until December 24, 1997": DTSTART 09:00 New York, UNTIL=19971224T000000Z.
+    zoneinfo = pytest.importorskip("zoneinfo")
+    try:
+        new_york = zoneinfo.ZoneInfo("America/New_York")
+    except zoneinfo.ZoneInfoNotFoundError:  # pragma: no cover
+        pytest.skip("no time zone database")
+    start = datetime(1997, 9, 2, 9, tzinfo=new_york)
+    until = datetime(1997, 12, 24, tzinfo=timezone.utc)
+    result = list(date_range(start, until, inclusive=True))
     assert (result[0].day, result[-1].month, result[-1].day, len(result)) == (2, 12, 23, 113)
+    assert {value.hour for value in result} == {9}
 
 
 def test_february_30_is_ignored_and_not_counted() -> None:
@@ -82,7 +89,7 @@ def test_rfc_5545_rules_this_library_follows() -> None:
     assert 'The "DTSTART" property value always counts as the first occurrence' in text
 
 
-def test_rfc_3339_duration_grammar_matches_the_parser() -> None:
+def test_rfc_3339_duration_grammar_is_the_one_test_step_writes_out() -> None:
     text = _rfc("rfc3339.txt")
     rules = dict(re.findall(r"^\s+(dur-[a-z]+)\s+=\s+(.+?)\s*$", text, flags=re.MULTILINE))
     assert rules["dur-week"] == '1*DIGIT "W"'

@@ -31,6 +31,10 @@ All notable changes to this project are documented here. The format follows
   mixed with a `datetime`, naive mixed with aware, a non-int (or bool) `count`, a step that is
   neither a string nor a `timedelta`.
 - `inclusive=True` together with `count` raises `ValueError` instead of being ignored.
+- `inclusive` and `end_of_month` must be booleans (`TypeError` otherwise).
+- An aware `stop` is compared as an instant, so repeated wall times are ordered correctly.
+- Step counts and durations accept ASCII digits only, and an ISO 8601 duration must follow
+  the RFC 3339 grammar (days follow months, never years directly).
 
 ## [0.1.0]
 

@@ -28,6 +28,16 @@ def exists(value: date) -> bool:
     return back.replace(tzinfo=None, fold=0) == value.replace(tzinfo=None, fold=0)
 
 
+def instant(value: date) -> date:
+    """An aware datetime as UTC, so comparisons ignore which zone object it carries."""
+    if not isinstance(value, datetime) or value.utcoffset() is None:
+        return value
+    try:
+        return value.astimezone(timezone.utc)
+    except OverflowError:  # within hours of year 1 or 9999 the wall clock has to do
+        return value
+
+
 def term(start: D, step: Step, index: int, end_of_month: bool) -> tuple[D, bool]:
     """The ``index``-th value from ``start`` and whether it needed no clamping.
 

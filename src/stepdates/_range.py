@@ -6,9 +6,9 @@ from collections.abc import Iterator
 from datetime import date, timedelta
 from typing import Literal
 
-from stepdates._calendar import D, exists, term
+from stepdates._calendar import D, exists, instant, term
 from stepdates._step import Step, parse_step
-from stepdates._validate import check_end_of_month, check_start, check_stop
+from stepdates._validate import check_end_of_month, check_flags, check_start, check_stop
 
 InvalidPolicy = Literal["clamp", "skip"]
 _POLICIES = ("clamp", "skip")
@@ -27,8 +27,9 @@ def date_range(
     """Iterate dates (or datetimes) from ``start`` by a calendar ``step``.
 
     Give exactly one of ``stop`` or ``count``. With ``stop`` the range is half-open
-    (``stop`` excluded) unless ``inclusive`` is set; a range that would leave years 1 to
-    9999 simply ends. With ``count`` exactly that many values are produced, or
+    (``stop`` excluded) unless ``inclusive`` is set. An aware ``stop`` is compared as an
+    instant, so a repeated wall time is ordered by its offset. A range that would leave
+    years 1 to 9999 simply ends. With ``count`` exactly that many values are produced, or
     ``OverflowError`` is raised when the range leaves those years.
 
     ``step`` is a unit (``"day"``, ``"week"``, ``"month"``, ``"quarter"``, ``"year"``) with
@@ -54,6 +55,7 @@ def date_range(
             raise ValueError("inclusive only applies to a stop, not to a count")
     if stop is not None:
         check_stop(start, stop)
+    check_flags(inclusive=inclusive, end_of_month=end_of_month)
     if invalid not in _POLICIES:
         raise ValueError(f"invalid must be one of {_POLICIES}, not {invalid!r}")
     check_end_of_month(start, parsed, end_of_month)
@@ -69,6 +71,7 @@ def shift(value: D, step: str | timedelta, *, end_of_month: bool = False) -> D:
     """
     check_start(value)
     parsed = parse_step(step)
+    check_flags(end_of_month=end_of_month)
     check_end_of_month(value, parsed, end_of_month)
     return term(value, parsed, 1, end_of_month)[0]
 
@@ -103,6 +106,7 @@ def _generate(
 
 
 def _beyond(value: date, stop: date, forward: bool, inclusive: bool) -> bool:
+    value, stop = instant(value), instant(stop)
     if value == stop:
         return not inclusive
     return value > stop if forward else value < stop

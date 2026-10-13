@@ -75,6 +75,9 @@ def test_datetimes(capsys: pytest.CaptureFixture[str]) -> None:
         (["2026-01-01", "2026-01-02T00:00"], "both be dates or both be datetimes"),
         (["2026-01-30", "-n", "2", "-s", "month", "--end-of-month"], "last day of its month"),
         (["2026-01-01", "-n", "2", "--inclusive"], "inclusive"),
+        (["2026-01-01", "-n", "2", "-f", "%"], "invalid --format"),
+        (["2026-01-01", "-n", "\u0662"], "not a whole number"),
+        (["2026-01-01", "-n", "2", "-s"], "expected one argument"),
     ],
 )
 def test_bad_input_exits_two(
@@ -122,3 +125,34 @@ def test_python_dash_m_runs_the_tool(tmp_path: Path) -> None:
         env={**os.environ, "PYTHONPATH": str(SRC), "PYTHONDONTWRITEBYTECODE": "1"},
     )
     assert (result.returncode, result.stdout.split()) == (0, ["2024-02-29", "2025-02-28"])
+
+
+def test_a_dash_led_step_needs_no_equals_sign(capsys: pytest.CaptureFixture[str]) -> None:
+    for flag in ("-s", "--step"):
+        code, out, _ = _run(["2026-03-31", "-n", "2", flag, "-P1M"], capsys)
+        assert (code, out.split()) == (0, ["2026-03-31", "2026-02-28"])
+    code, out, _ = _run(["2026-03-31", "-n", "2", "--step=-1 month"], capsys)
+    assert (code, out.split()) == (0, ["2026-03-31", "2026-02-28"])
+
+
+def test_a_plain_date_stays_a_date(capsys: pytest.CaptureFixture[str]) -> None:
+    code, out, _ = _run(["2026-01-01", "-n", "1"], capsys)
+    assert (code, out) == (0, "2026-01-01\n")
+    if sys.version_info >= (3, 11):  # compact ISO 8601 dates need Python 3.11
+        assert _run(["20260101", "-n", "1"], capsys)[:2] == (0, "2026-01-01\n")
+
+
+def test_a_reader_that_goes_away_gets_no_traceback(tmp_path: Path) -> None:
+    process = subprocess.Popen(
+        [sys.executable, "-m", "stepdates", "2026-01-01", "-n", "1000000"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(SRC), "PYTHONDONTWRITEBYTECODE": "1"},
+    )
+    assert process.stdout is not None and process.stderr is not None
+    assert process.stdout.readline() == b"2026-01-01" + os.linesep.encode()
+    process.stdout.close()
+    err = process.stderr.read()
+    assert process.wait(timeout=60) == 0, err
+    assert err == b""
