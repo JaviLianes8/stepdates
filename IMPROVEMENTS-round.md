@@ -2,11 +2,11 @@
 
 Progress:
 - [x] Brainstorm ranked improvements (this file)
-- [ ] Step grammar: units, quarter, ISO 8601 durations, `timedelta`
-- [ ] `invalid="skip"` (RFC 5545 recurrence reading) next to the default clamp
-- [ ] `end_of_month` anchoring and `shift`
-- [ ] `datetime` support: type kept, wall clock time, DST gaps and overlaps
-- [ ] Strict validation and clean ends at the edges of the supported years
+- [x] Step grammar: units, quarter, ISO 8601 durations, `timedelta`
+- [x] `invalid="skip"` (RFC 5545 recurrence reading) next to the default clamp
+- [x] `end_of_month` anchoring and `shift`
+- [x] `datetime` support: type kept, wall clock time, DST gaps and overlaps
+- [x] Strict validation and clean ends at the edges of the supported years
 - [ ] Command line tool (`stepdates`, `python -m stepdates`)
 - [ ] Contracts: RFC examples, dateutil oracle, typing, README, wheel e2e
 - [ ] Mutation run (guards removed one at a time, each must fail the suite)

@@ -4,7 +4,7 @@ import stepdates
 
 # The public API. Add every exported name here as the library grows; this list is the
 # contract and the test below fails if the module and this list disagree.
-PUBLIC_API: list[str] = ["date_range"]
+PUBLIC_API: list[str] = ["InvalidPolicy", "date_range", "shift"]
 
 
 def test_all_lists_exactly_the_public_api() -> None:
@@ -24,3 +24,10 @@ def test_version_is_a_three_part_string() -> None:
 
 def test_the_package_ships_type_information() -> None:
     assert importlib.resources.files("stepdates").joinpath("py.typed").is_file()
+
+
+def test_the_command_line_entry_point_is_declared() -> None:
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'stepdates = "stepdates._cli:main"' in text
