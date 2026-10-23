@@ -93,3 +93,12 @@ def test_an_aware_month_end_inside_a_gap_is_dropped_by_skip() -> None:
     assert [(v.month, v.day) for v in kept] == [(1, 31), (2, 29), (3, 31), (4, 30)]
     skipped = date_range(start, count=4, step="month", end_of_month=True, invalid="skip")
     assert [(v.month, v.day) for v in skipped] == [(1, 31), (2, 29), (4, 30), (5, 31)]
+
+
+@pytest.mark.parametrize("day", [(1, 1, 1), (1969, 12, 30), (9999, 12, 29)])
+def test_skip_never_reads_an_offsetless_value_as_local_time(day: tuple[int, int, int]) -> None:
+    # Converting such a value would treat it as local time, which Windows refuses before 1970.
+    start = datetime(*day, 9, tzinfo=_NoOffset())
+    assert list(date_range(start, count=3, invalid="skip")) == [
+        start + timedelta(days=n) for n in range(3)
+    ]
