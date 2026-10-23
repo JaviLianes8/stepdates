@@ -1,5 +1,7 @@
 # stepdates
 
+[![Lianes8 Certified](https://lianes8studio.com/certified/lianes8-certified-badge.svg)](https://lianes8studio.com/certified)
+
 A range() for dates: iterate from start to stop by calendar day, week, month or year.
 
 ## Install
@@ -113,11 +115,14 @@ before the gap. Both are the RFC 5545 readings, and both are what `astimezone()`
 `fold=0`. `start` itself is returned as given. An aware `stop` is compared as an instant,
 so 01:30 before the clocks go back comes before 01:30 after, even in the same zone.
 
-## Edges of the calendar
+## Edges of the calendar and errors
 
 Python dates run from year 1 to year 9999. In `stop` mode a range that would step past either
 end simply stops. In `count` mode the values that fit are produced and then `OverflowError` is
-raised, since the count cannot be met.
+raised, since the count cannot be met. Wrong types raise `TypeError` and bad values raise
+`ValueError`, both when `date_range` is called, before any value is produced; a message quotes
+at most 80 characters of what it was given. The
+[guide](https://github.com/JaviLianes8/stepdates/blob/main/GUIDE.md) lists every case.
 
 ## Command line
 
@@ -143,18 +148,32 @@ the same.
 
 ## Why
 
-The standard library has no date range. `range()` only counts integers, and `timedelta`
-cannot express calendar months or years, where "one month later" has to decide what happens to
-31 January. People reach for `pandas.date_range` (a large dependency), hand-roll month
-arithmetic (often with the clamping wrong, or drifting from 31 to 28 for good), or use
-`dateutil.rrule` (a full recurrence engine whose API is built for rules rather than a plain
-range). `stepdates` is a small, typed, zero-dependency function that does the obvious thing,
-names its month-end convention, and agrees with `dateutil` where their conventions meet (the
-test suite checks it).
+The standard library has no date range: `range()` counts integers and `timedelta` has no
+months, so "one month after 31 January" needs a convention. The usual stand-ins each pick one,
+and some drift. Four monthly values from 31 January 2026, run on 2026-10-23:
+
+| Tool | Values | What you get |
+| --- | --- | --- |
+| pandas 3.1.0, `date_range(freq=DateOffset(months=1))` | 01-31, 02-28, 03-28, 04-28 | each step from the previous value, so the 28th sticks; a `DatetimeIndex`; needs numpy |
+| python-dateutil 3.0.0, `rrule(MONTHLY)` | 01-31, 03-31, 05-31, 07-31 | the RFC 5545 reading only (February is dropped); a recurrence rule engine |
+| arrow 1.4.0, `Arrow.range("month")` | 01-31, 02-28, 03-31, 04-30 | `Arrow` objects, not `date`; needs python-dateutil and tzdata |
+| pendulum 3.3.0, `interval(...).range("months")` | 01-31, 02-28, 03-31, 04-30 | its own `Date` subclass; needs python-dateutil and tzdata |
+| stepdates | 01-31, 02-28, 03-31, 04-30 | plain `date` or `datetime`; `invalid="skip"` gives the dateutil reading and `end_of_month=True` the month ends; no dependencies |
+
+`stepdates` is one small, typed function with the three conventions named, steps written as
+words or ISO 8601 durations, and a command line tool. Its tests check it against
+python-dateutil, against .NET `DateTime.AddMonths`, and against the examples and the duration
+grammar in the RFC texts.
+
+## Documentation
+
+- [Guide](https://github.com/JaviLianes8/stepdates/blob/main/GUIDE.md): the step grammar, the
+  conventions, time zones, every error, the command line and the typing.
+- [Changelog](https://github.com/JaviLianes8/stepdates/blob/main/CHANGELOG.md)
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/JaviLianes8/stepdates/blob/main/LICENSE).
 
 ## Links
 
