@@ -56,8 +56,8 @@ def _join_negative_steps(argv: Sequence[str]) -> list[str]:
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
-        """argparse's own messages, which may echo an argument whole."""
-        self.fail(scrub(message))
+        """argparse's own messages, which may echo an argument whole; scrub bounds them."""
+        super().error(scrub(message))
 
     def fail(self, message: str) -> NoReturn:
         """The tool's own messages, whose values are already quoted."""
@@ -95,15 +95,17 @@ def _output_encoding() -> tuple[str, str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for ``stepdates`` and ``python -m stepdates``; returns the exit code."""
+    if sys.stdout is None:  # started with standard output closed; even --help has nowhere to go
+        print("stepdates: error: there is no standard output to write to", file=sys.stderr)
+        return 2
     parser = _parser()
-    args, extras = parser.parse_known_args(
+    # Intermixed, so that STOP may follow an option on every Python: 3.10 and 3.11 otherwise
+    # fill the optional positional early and refuse a later STOP as unrecognized.
+    args, extras = parser.parse_known_intermixed_args(
         _join_negative_steps(sys.argv[1:] if argv is None else argv)
     )
     if extras:  # listed here rather than by argparse, which joins them all whole
         parser.fail(gettext("unrecognized arguments: %s") % listing(extras))
-    if sys.stdout is None:  # started with standard output closed
-        print("stepdates: error: there is no standard output to write to", file=sys.stderr)
-        return 2
     if args.format:
         try:  # UnicodeEncodeError is a ValueError: the output must be able to hold the text
             sample = args.start.strftime(args.format)

@@ -13,17 +13,20 @@ MESSAGE_LIMIT = 500
 SHOWN = 3
 
 # The one argparse message that echoes a refused argument raw (unrecognized arguments are
-# listed by the tool itself); every other one uses repr(), which _REPR finds.
+# listed by the tool itself); every other one uses repr(), which _REPR finds. Its closing
+# quote is optional, so an opening that never closes is passed over in one scan instead of
+# being scanned again from each later quote character; _short leaves such a run as it is.
 _AMBIGUOUS = "ambiguous option: %(option)s could match %(matches)s"
-_REPR = re.compile(r"""'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*\"""")
+_REPR = re.compile(r"""'(?:[^'\\\n]|\\.)*(')?|"(?:[^"\\\n]|\\.)*(")?""")
 
 
 def quote(value: str) -> str:
     """``repr`` of ``value`` in at most ``LIMIT`` characters between its quotes.
 
     A value that does not fit is cut between two of its characters, never inside an escape
-    such as ``\\t``, and followed by its length.
+    such as ``\\t``, and followed by its length. A ``str`` subclass is read as its plain text.
     """
+    value = str.__str__(value)  # a subclass may slice, measure or repr itself its own way
     shown = value[:LIMIT]
     text = repr(shown)
     while len(text) > LIMIT + 2:  # escapes make the repr longer than the value
@@ -55,20 +58,22 @@ def bound(message: str) -> str:
 def scrub(message: str) -> str:
     """An argparse error ``message`` with every argument it echoes held to :func:`quote`.
 
-    One pass over the message, so the time is linear in its length whatever the arguments.
+    An echoed option over ``LIMIT`` characters, or with a character that is not printable, is
+    quoted as :func:`listing` quotes it. One pass over the message, so the time is linear in
+    its length whatever the arguments.
     """
     head, _, rest = gettext(_AMBIGUOUS).partition("%(option)s")
     tail = rest.partition("%(matches)s")[0]
     if head and tail and message.startswith(head) and tail in message:
         option, _, matches = message[len(head) :].rpartition(tail)
-        if len(option) > LIMIT:
+        if len(option) > LIMIT or not option.isprintable():
             message = f"{head}{quote(option)}{tail}{matches}"
     return bound(_REPR.sub(_short, message))
 
 
 def _short(match: re.Match[str]) -> str:
     text = match.group()
-    if len(text) <= LIMIT + 2:
+    if match.lastindex is None or len(text) <= LIMIT + 2:  # unclosed, or short enough
         return text
     try:
         with warnings.catch_warnings():

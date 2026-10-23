@@ -28,11 +28,13 @@ change only in a new major version. The GUIDE describes all of it.
   the quotes and control characters escaped, in the library and in the command line. A value
   that does not fit (over 80 characters, or a shorter one whose escapes such as `\t` make its
   `repr` longer) is cut between two of its characters, never inside an escape, and followed
-  by its length. Before, the whole value was echoed. In the command line this covers the
-  messages about unknown or malformed options too: unrecognized arguments are listed up to
-  three, followed by how many more there are, and a message over 500 characters is cut there
-  and followed by its length. Building a message takes time linear in its length, however
-  many arguments there are.
+  by its length. A `str` subclass is quoted as its plain text. Before, the whole value was
+  echoed. In the command line this covers the messages about unknown or malformed options
+  too: an option over 80 characters, or with a character that is not printable, is quoted
+  the same way, unrecognized arguments are listed up to three, followed by how many more
+  there are, and a message over 500 characters is cut there once and followed by its
+  length. Building a message takes time linear in its length, however many arguments there
+  are.
 - The errors of `shift` name its own argument, `value`; before they said `start`.
 - The `OverflowError` of a `count` range says "after 1 value" when one value fits.
 - The command line `--count` accepts at most 18 digits.
@@ -40,7 +42,12 @@ change only in a new major version. The GUIDE describes all of it.
   hold a value (a `--format` with characters the terminal or file encoding lacks). Before, it
   stopped with a traceback and status 1.
 - The command line started without a standard output (closed with `>&-`) exits with status 2
-  and a one-line message. Before, it stopped with a traceback and status 1.
+  and a one-line message, whatever its arguments, `--help` and `--version` included. Before,
+  it stopped with a traceback and status 1.
+- The command line reads options and START and STOP in any order on every supported Python.
+  Before, Python 3.10 and 3.11 refused a STOP that came after an option
+  (`stepdates 2026-01-01 --inclusive 2026-01-03`) as an unrecognized argument, while 3.12
+  and later accepted it.
 
 ### Fixed
 
