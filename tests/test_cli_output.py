@@ -124,19 +124,31 @@ def test_no_standard_output_is_a_one_line_error(
     assert capsys.readouterr().err == "stepdates: error: there is no standard output to write to\n"
 
 
+# Python 3.10 and 3.11 on Windows encode a strftime format with the locale codec, which
+# refuses most non-Latin text; an accented letter passes everywhere this suite runs.
+ACCENT = "%d \u00e9"
+
+
+def _strftime_takes_the_accent() -> None:
+    try:
+        date(2026, 1, 1).strftime(ACCENT)
+    except UnicodeError:  # pragma: no cover - a locale without that letter
+        pytest.skip("strftime cannot encode the format with this locale")
+
+
 def test_a_stdout_without_an_encoding_takes_utf_8(monkeypatch: pytest.MonkeyPatch) -> None:
+    _strftime_takes_the_accent()
     sink = io.StringIO()  # its encoding is None
     monkeypatch.setattr(sys, "stdout", sink)
-    assert main(["2026-01-01", "-n", "2", "-f", "%d \u6708"]) == 0
-    assert sink.getvalue() == "01 \u6708\n02 \u6708\n"
+    assert main(["2026-01-01", "-n", "2", "-f", ACCENT]) == 0
+    assert sink.getvalue() == "01 \u00e9\n02 \u00e9\n"
 
 
 @pytest.mark.parametrize(
-    ("handler", "shown"), [("backslashreplace", b"01 \\u6708"), ("replace", b"01 ?")]
+    ("handler", "shown"), [("backslashreplace", b"01 \\xe9"), ("replace", b"01 ?")]
 )
 def test_the_format_check_uses_the_error_handler_of_stdout(handler: str, shown: bytes) -> None:
-    result = _module(
-        "2026-01-01", "-n", "2", "-f", "%d \u6708", PYTHONIOENCODING=f"ascii:{handler}"
-    )
+    _strftime_takes_the_accent()
+    result = _module("2026-01-01", "-n", "2", "-f", ACCENT, PYTHONIOENCODING=f"ascii:{handler}")
     assert result.returncode == 0
     assert result.stdout.splitlines() == [shown, shown.replace(b"01", b"02")]
