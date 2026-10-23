@@ -125,3 +125,14 @@ def test_every_designator_order_follows_the_grammar(letters: str) -> None:
             parse_step(text)
     else:
         assert parse_step(text) != Step(0, 0)
+
+
+@pytest.mark.parametrize("text", ["2weeks", "2 weeks", "2\tweeks", "2\nweeks", "2 \t\r\n\f\vweeks"])
+def test_any_ascii_whitespace_or_none_may_separate_a_count_and_its_unit(text: str) -> None:
+    assert parse_step(text) == Step(0, 14)
+
+
+@pytest.mark.parametrize("text", ["2\u00a0weeks", "2\u2003weeks", "2 - weeks", "2 2 weeks"])
+def test_nothing_else_separates_a_count_and_its_unit(text: str) -> None:
+    with pytest.raises(ValueError, match="invalid step"):
+        parse_step(text)

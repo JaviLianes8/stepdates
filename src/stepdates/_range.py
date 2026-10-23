@@ -12,6 +12,15 @@ from stepdates._step import Step, parse_step
 from stepdates._validate import check_end_of_month, check_flags, check_start, check_stop
 
 InvalidPolicy = Literal["clamp", "skip"]
+"""The type of the ``invalid`` argument of :func:`date_range`: ``"clamp"`` or ``"skip"``.
+
+>>> from datetime import date
+>>> policy: InvalidPolicy = "clamp"
+>>> [d.day for d in date_range(date(2026, 1, 31), count=2, step="month", invalid=policy)]
+[31, 28]
+>>> InvalidPolicy.__args__
+('clamp', 'skip')
+"""
 _POLICIES = ("clamp", "skip")
 
 
@@ -108,10 +117,10 @@ def shift(value: D, step: str | timedelta, *, end_of_month: bool = False) -> D:
     >>> shift(date(2024, 2, 29), "-P1Y")
     datetime.date(2023, 2, 28)
     """
-    check_start(value)
+    check_start(value, "value")
     parsed = parse_step(step)
     check_flags(end_of_month=end_of_month)
-    check_end_of_month(value, parsed, end_of_month)
+    check_end_of_month(value, parsed, end_of_month, "value")
     return term(value, parsed, 1, end_of_month)[0]
 
 
@@ -132,7 +141,8 @@ def _generate(
             if count is None:
                 return
             raise OverflowError(
-                f"the range leaves the supported years 1 to 9999 after {produced} values"
+                "the range leaves the supported years 1 to 9999 after "
+                f"{produced} value{'' if produced == 1 else 's'}"
             ) from None
         # A clamped term sits in the same month as the dropped one, so it is a safe bound.
         if stop is not None and _beyond(value, stop, step.forward, inclusive):

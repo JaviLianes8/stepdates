@@ -24,9 +24,22 @@ change only in a new major version. The GUIDE describes all of it.
   past Python's 4,300-digit conversion limit raised that limit's own `ValueError`, and smaller
   ones could never give a second value anyway.
 - An `invalid` argument that is not a `str` raises `TypeError` instead of `ValueError`.
-- Error messages quote at most 80 characters of the value at fault, followed by its length,
-  in the library and in the command line. Before, the whole value was echoed.
+- Error messages quote at most 80 characters of the value at fault (a value of up to 80
+  characters whole), followed by its length when it is longer, with control characters
+  escaped, in the library and in the command line. Before, the whole value was echoed. In
+  the command line this covers the messages about unknown or malformed options too.
+- The errors of `shift` name its own argument, `value`; before they said `start`.
+- The `OverflowError` of a `count` range says "after 1 value" when one value fits.
 - The command line `--count` accepts at most 18 digits.
+- The command line exits with status 2 and a one-line message when the output encoding cannot
+  hold a value (a `--format` with characters the terminal or file encoding lacks). Before, it
+  stopped with a traceback and status 1.
+
+### Fixed
+
+- `invalid="skip"` with an aware datetime whose `tzinfo` returns `None` from `dst()`, or does
+  not implement it, raised `ValueError` or `NotImplementedError` during iteration. Such a zone
+  has no gap that can be found, so every term is kept, as with `invalid="clamp"`.
 
 ### Added
 

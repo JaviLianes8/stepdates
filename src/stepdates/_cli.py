@@ -9,9 +9,10 @@ import re
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime
+from typing import NoReturn
 
 from stepdates import __version__
-from stepdates._quote import quote
+from stepdates._quote import quote, scrub
 from stepdates._range import date_range
 from stepdates._step import MAX_DIGITS
 
@@ -52,8 +53,15 @@ def _join_negative_steps(argv: Sequence[str]) -> list[str]:
     return joined
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+class _Parser(argparse.ArgumentParser):
+    args: Sequence[str] = ()
+
+    def error(self, message: str) -> NoReturn:
+        super().error(scrub(message, self.args))
+
+
+def _parser() -> _Parser:
+    parser = _Parser(
         prog="stepdates",
         description="Print dates from START by a calendar step, one per line.",
         epilog='Example: stepdates 2026-01-31 --count 3 --step "1 month"',
@@ -76,13 +84,20 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _output_encoding() -> tuple[str, str]:
+    stdout = sys.stdout
+    return getattr(stdout, "encoding", None) or "utf-8", getattr(stdout, "errors", None) or "strict"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for ``stepdates`` and ``python -m stepdates``; returns the exit code."""
     parser = _parser()
-    args = parser.parse_args(_join_negative_steps(sys.argv[1:] if argv is None else argv))
+    parser.args = _join_negative_steps(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(parser.args)
     if args.format:
-        try:
-            args.start.strftime(args.format)
+        try:  # UnicodeEncodeError is a ValueError: the output must be able to hold the text
+            sample = args.start.strftime(args.format)
+            sample.encode(*_output_encoding())
         except ValueError as error:
             parser.error(f"invalid --format {quote(args.format)}: {error}")
     try:
@@ -102,6 +117,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             text = value.strftime(args.format) if args.format else value.isoformat()
             sys.stdout.write(text + "\n")
         sys.stdout.flush()
+    except UnicodeEncodeError as error:
+        # A value the --format check could not foresee, such as a later zone name.
+        print(f"stepdates: error: the output cannot hold {quote(text)}: {error}", file=sys.stderr)
+        return 2
     except OverflowError as error:
         sys.stdout.flush()
         print(f"stepdates: {error}", file=sys.stderr)

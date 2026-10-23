@@ -107,3 +107,18 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
     bad = subprocess.run([str(script), "2026-01-01"], cwd=work, capture_output=True, check=False)
     assert bad.returncode == 2
     assert b"exactly one of stop or count" in bad.stderr
+    for tool in ([script], [python, "-I", "-m", "stepdates"]):
+        # A count past year 9999 exits 1 after the values that fit, stderr merged in order.
+        past = subprocess.run(
+            [*map(str, tool), "9999-12-30", "-n", "5"],
+            cwd=work,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        assert past.returncode == 1
+        assert past.stdout.decode().splitlines() == [
+            "9999-12-30",
+            "9999-12-31",
+            "stepdates: the range leaves the supported years 1 to 9999 after 2 values",
+        ]

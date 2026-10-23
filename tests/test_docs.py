@@ -58,6 +58,14 @@ def test_each_example_prints_what_its_comments_say(
     assert len(printed) >= 2
 
 
+@pytest.mark.parametrize("name", ["README.md", "GUIDE.md"])
+def test_the_zone_examples_say_they_need_a_time_zone_database(name: str) -> None:
+    (block,) = [block for block in _blocks(name) if "ZoneInfo" in block]
+    text = (ROOT / name).read_text(encoding="utf-8")
+    before = text[: text.index(block)]
+    assert "pip install tzdata" in before[before.rindex("\n## ") :]
+
+
 def test_readme_links_are_absolute_and_reach_the_guide_and_changelog() -> None:
     links = re.findall(r"\]\(([^)]+)\)", _readme())
     assert links and all(link.startswith("https://") for link in links), links

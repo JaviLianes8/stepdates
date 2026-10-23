@@ -24,8 +24,9 @@ one of `stop` (half-open, or closed with `inclusive=True`) and `count`.
 | ISO 8601 duration, date part | `"P1D"`, `"P2W"`, `"P1M"`, `"P1Y6M"`, `"-P1W"`, `"+P3M"` | RFC 3339 Appendix A grammar with the sign of RFC 5545 3.3.6 |
 | `timedelta` | `timedelta(days=-7)` | whole days only |
 
-Unit words and durations ignore case and surrounding ASCII whitespace. Digits are ASCII and a
-size has at most 18 digits. A duration that mixes months or years with days (`"P1M2D"`) is
+Unit words and durations ignore case and surrounding ASCII whitespace. Between the count and
+the unit of a unit word, any ASCII whitespace or none may stand (`"2weeks"`, `"2 weeks"`, a tab).
+Digits are ASCII and a size has at most 18 digits. A duration that mixes months or years with days (`"P1M2D"`) is
 refused, because a month and two days from 30 January has no single answer. A zero step is
 refused. Times inside a duration (`"PT1H"`) are not steps.
 
@@ -55,9 +56,10 @@ print([str(d) for d in date_range(date(2024, 2, 29), count=3, step="month", end_
   dropped or not.
 - `end_of_month=True`: from a `start` on the last day of its month, every term is the last
   day of its month. It needs a month, quarter or year step; anything else is a `ValueError`.
-  Such terms always exist, so `invalid` changes nothing.
+  For dates and naive datetimes such terms always exist, so `invalid` changes nothing. An aware
+  month end can still fall in a DST gap, and `invalid="skip"` drops it as any other gap time.
 
-`shift(value, step, end_of_month=False)` is the second term of the same range: one step,
+`shift(value, step, *, end_of_month=False)` is the second term of the same range: one step,
 clamped.
 
 ## Datetimes and time zones
@@ -66,8 +68,14 @@ A `datetime` start gives `datetime` values with its time and `tzinfo`. Steps mov
 clock (09:00 stays 09:00 across a clock change). A term that lands on a wall time twice
 takes the first occurrence (`fold=0`); a term inside a gap keeps that wall time, which
 `astimezone()` reads with the offset before the gap. With `invalid="skip"` a term inside a
-gap is dropped instead (RFC 5545 3.3.5 and 3.3.10). `stop` must match `start`: both dates,
-both naive or both aware. An aware `stop` is compared as an instant.
+gap is dropped instead (RFC 5545 3.3.5 and 3.3.10). A `tzinfo` whose `dst()` returns `None` or
+is not implemented cannot convert from UTC, so it has no gap to find and nothing is dropped for
+it. A `tzinfo` whose `utcoffset()` is `None` makes the value naive, as Python counts it. `stop`
+must match `start`: both dates, both naive or both aware. An aware `stop` is compared as an
+instant.
+
+The example uses `zoneinfo`, which reads the system's IANA time zone database. Windows has none,
+so there (or on any system without one) run `pip install tzdata` first.
 
 ```python
 from datetime import datetime, timezone
@@ -88,7 +96,8 @@ print([d.day for d in date_range(start, until, inclusive=True)])
 
 ## Errors
 
-Every error names the argument at fault and quotes at most 80 characters of it.
+Every error names the argument at fault (`value` for `shift`, `start` for `date_range`) and
+quotes at most 80 characters of it, with control characters escaped.
 
 | Raised | When |
 | --- | --- |
@@ -109,7 +118,9 @@ The options map to the arguments of `date_range`; `python -m stepdates` is the s
 and STOP are read by `date.fromisoformat`, then `datetime.fromisoformat`. Output is one ISO 8601
 value per line, or a `strftime` pattern with `--format`. A dash-led step works without `=`:
 `-s -P1M`. Exit status: 0 on success (also when the reader closes the pipe early), 1 when a
-count runs past year 9999 (after printing the values that fit), 2 for bad input.
+count runs past year 9999 (after printing the values that fit), 2 for bad input, which includes
+a `--format` whose output the encoding of standard output cannot hold. Error messages, also
+the ones about unknown or malformed options, quote at most 80 characters of an argument.
 
 ## Typing
 

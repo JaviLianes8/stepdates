@@ -8,9 +8,9 @@ from stepdates._calendar import is_month_end
 from stepdates._step import Step
 
 
-def check_start(start: object) -> None:
+def check_start(start: object, name: str = "start") -> None:
     if not isinstance(start, date):
-        raise TypeError(f"start must be a date or a datetime, not {type(start).__name__}")
+        raise TypeError(f"{name} must be a date or a datetime, not {type(start).__name__}")
 
 
 def check_stop(start: date, stop: object) -> None:
@@ -30,10 +30,10 @@ def check_flags(**flags: object) -> None:
             raise TypeError(f"{name} must be a bool, not {type(value).__name__}")
 
 
-def check_end_of_month(start: date, step: Step, end_of_month: bool) -> None:
+def check_end_of_month(start: date, step: Step, end_of_month: bool, name: str = "start") -> None:
     if not end_of_month:
         return
     if not step.months:
         raise ValueError("end_of_month needs a month, quarter or year step")
     if not is_month_end(start):
-        raise ValueError(f"end_of_month needs a start on the last day of its month, not {start}")
+        raise ValueError(f"end_of_month needs a {name} on the last day of its month, not {start}")

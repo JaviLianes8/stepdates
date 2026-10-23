@@ -88,7 +88,9 @@ the first term past the stop, skipped or not.
 A `datetime` start gives `datetime` values with the same time and `tzinfo`. Steps are calendar
 steps on the wall clock, as in RFC 5545: one day after 09:00 is 09:00 the next day, whether or
 not the clocks changed overnight. `stop` must be the same kind of value as `start` (date with
-date, naive with naive, aware with aware), or `TypeError` is raised.
+date, naive with naive, aware with aware), or `TypeError` is raised. The example below uses
+`zoneinfo`, which reads the system's IANA time zone database; Windows has none, so there (or on
+any system without one) run `pip install tzdata` first.
 
 ```python
 from datetime import datetime, timezone
@@ -141,9 +143,9 @@ $ stepdates 2026-01-31 --count 3 --step month --skip-invalid --format "%d %b %Y"
 [--end-of-month] [--format FMT]` prints one value per line (ISO 8601 unless `--format` gives a
 `strftime` pattern). START and STOP are ISO 8601 dates or datetimes as Python's
 `fromisoformat` reads them (compact forms such as `20260131` need Python 3.11 or later). A step
-that starts with a dash works as is: `--step -P1M`. Bad input, including a bad `--format`,
-exits with status 2; a count that runs past year 9999 exits with status 1 after the values that
-fit. A reader that stops early (`| head`) ends the output quietly. `python -m stepdates` does
+that starts with a dash works as is: `--step -P1M`. Bad input exits with status 2, including a
+bad `--format` and one whose output the terminal or file encoding cannot hold; a count that runs
+past year 9999 exits with status 1 after the values that fit. A reader that stops early (`| head`) ends the output quietly. `python -m stepdates` does
 the same.
 
 ## Why

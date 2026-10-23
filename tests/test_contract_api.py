@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import ast
+import doctest
 import inspect
 import typing
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 import stepdates
-from stepdates import date_range, shift
+from stepdates import _range, date_range, shift
 
 P = inspect.Parameter
 
@@ -57,6 +60,27 @@ def test_the_package_docstring_documents_the_policy_alias() -> None:
     assert ">>> " in (stepdates.__doc__ or "")
 
 
+def test_the_policy_alias_has_an_attribute_docstring_with_a_running_example() -> None:
+    # typing caches Literal["clamp", "skip"], so __doc__ cannot be set on the alias without
+    # changing every identical literal in the process; the docstring sits under the assignment.
+    tree = ast.parse(Path(_range.__file__).read_text(encoding="utf-8"))
+    body = tree.body
+    (index,) = [
+        i
+        for i, node in enumerate(body)
+        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "InvalidPolicy"
+    ]
+    after = body[index + 1]
+    assert isinstance(after, ast.Expr) and isinstance(after.value, ast.Constant)
+    doc = after.value.value
+    assert isinstance(doc, str)
+    test = doctest.DocTestParser().get_doctest(doc, dict(vars(_range)), "InvalidPolicy", None, 0)
+    runner = doctest.DocTestRunner()
+    runner.run(test)
+    assert runner.summarize(verbose=False) == (0, len(test.examples))
+    assert len(test.examples) >= 2
+
+
 D = date(2026, 1, 31)
 
 # (arguments, error type, words that must appear in the message)
@@ -79,6 +103,7 @@ DATE_RANGE_ERRORS: list[tuple[dict[str, object], type[Exception], str]] = [
     ({"start": D, "stop": D, "count": 1}, ValueError, "exactly one of stop or count"),
     ({"start": D, "count": -1}, ValueError, "must not be negative"),
     ({"start": D, "count": 1, "inclusive": True}, ValueError, "inclusive only applies"),
+    ({"start": D, "count": 0, "inclusive": True}, ValueError, "inclusive only applies"),
     ({"start": D, "count": 1, "step": "fortnight"}, ValueError, "invalid step"),
     ({"start": D, "count": 1, "step": "0 days"}, ValueError, "must not be zero"),
     ({"start": D, "count": 1, "step": timedelta(hours=1)}, ValueError, "whole days"),
