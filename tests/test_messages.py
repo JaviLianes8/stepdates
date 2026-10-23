@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from datetime import date
 
 import pytest
@@ -20,12 +21,37 @@ from stepdates._step import parse_step
         ("x" * 80, repr("x" * 80)),
         ("x" * 81, repr("x" * 80) + "... (81 characters)"),
         ("\t" * 30, "'" + "\\t" * 30 + "'"),
-        ("\t" * 50, "'" + "\\t" * 40 + "..."),
-        ("\t" * 100, "'" + "\\t" * 40 + "... (100 characters)"),
+        ("\t" * 40, "'" + "\\t" * 40 + "'"),
+        ("\t" * 41, "'" + "\\t" * 40 + "'... (41 characters)"),
+        ("\t" * 50, "'" + "\\t" * 40 + "'... (50 characters)"),
+        ("\t" * 100, "'" + "\\t" * 40 + "'... (100 characters)"),
+        ("x" * 78 + "\t", repr("x" * 78 + "\t")),
+        ("x" * 79 + "\t", repr("x" * 79) + "... (80 characters)"),
+        ("x" * 79 + "\x00", repr("x" * 79) + "... (80 characters)"),
+        ("\x00" * 21, "'" + "\\x00" * 20 + "'... (21 characters)"),
+        ("a" + "\x1b" * 30, "'a" + "\\x1b" * 19 + "'... (31 characters)"),
+        ("\u200b" * 14, "'" + "\\u200b" * 13 + "'... (14 characters)"),
     ],
 )
 def test_quote_bounds(value: str, expected: str) -> None:
     assert quote(value) == expected
+
+
+def test_quote_shows_the_longest_prefix_that_fits_whole() -> None:
+    pool = ["x", "'", '"', "\\", "\t", "\x00", "\x1b", "\u200b", "\U000e0001", "\u00e9", " "]
+    picks = random.Random(5545)
+    for _ in range(3000):
+        value = "".join(picks.choice(pool) for _ in range(picks.randint(0, 120)))
+        text = quote(value)
+        if len(value) <= 80 and len(repr(value)) <= 82:
+            assert text == repr(value)
+            continue
+        note = f"... ({len(value)} characters)"
+        assert text.endswith(note)
+        shown = text[: -len(note)]
+        size = next(n for n in range(len(value)) if repr(value[:n]) == shown)
+        assert len(shown) <= 82
+        assert size == 80 or len(repr(value[: size + 1])) > 82
 
 
 def test_a_step_message_quotes_eighty_characters_at_the_boundary() -> None:

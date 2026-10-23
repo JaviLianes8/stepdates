@@ -262,9 +262,71 @@ Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC text
 `mypy --strict src`, `mypy --strict src tests` and `pytest` (2043 passed, none skipped) all
 exit 0.
 
+### Round 2 (reviewed at eeea114)
+
+Every round 1 finding was confirmed fixed by its lens (a, c, d and e re-ran their repros at
+eeea114). New findings came from lenses a, c, d and e; a defect reported by several lenses is
+listed once with every id. Each behaviour fix was first written as a test that failed on
+eeea114 and passes now. No finding is disputed.
+
+| Finding | Resolution | Test |
+| --- | --- | --- |
+| a/N1, d/N1: the CHANGELOG said a value of up to 80 characters is quoted whole, but `quote()` cut the escaped text, so a short value with escapes lost its length and could end in half an escape | `quote()` keeps the longest prefix of the value whose `repr` has at most 80 characters between the quotes, so it never cuts inside an escape, and adds the length whenever the value is not shown whole. The CHANGELOG and GUIDE state that rule | test_messages::test_quote_bounds (reprs of 82 and 83 characters, `'a' + ESC * 30`, NUL * 21, zero-width spaces, tabs), test_quote_shows_the_longest_prefix_that_fits_whole (3,000 seeded values) |
+| a/N2: GUIDE said nothing is dropped for any tzinfo whose `dst()` is None | narrowed to such a tzinfo that keeps the default `fromutc()`; one with its own `fromutc()` has its gaps dropped by `skip` | test_tzinfo::test_a_zone_without_dst_that_converts_from_utc_has_its_gap_dropped |
+| c/N1: on 3.10 and 3.11 `-hTAIL` echoed TAIL whole ("ignored explicit argument") | `scrub()` no longer looks for the arguments in the message. argparse echoes a refused argument raw only in two messages: "unrecognized arguments", now listed by the tool itself, and "ambiguous option", whose option is quoted. Every other echo is a `repr`, and every `repr` in the message longer than 80 characters becomes the `quote()` of its value, whatever part of an argument it came from | test_cli_errors::test_a_dash_h_tail_is_quoted_as_older_pythons_report_it (the 3.10 message, any interpreter), test_a_dash_h_tail_is_never_echoed; on 3.10.19 and 3.11.5 the reviewer's repro now gives 333 bytes on stderr and the 1,000,000-character in-process case 333 characters |
+| c/N2: `scrub()` was quadratic in the number of long arguments, and the message had no size bound | one pass over the message; unrecognized arguments are listed up to three, then "and N more"; `bound()` escapes control characters and cuts a message over 500 characters, with its length. 8,000 arguments of 81 characters now take 0.003 s (10.7 s before) for 524 characters of stderr | test_cli_errors::test_many_long_arguments_take_linear_time, test_many_long_arguments_give_a_short_message (unrecognized and ambiguous shapes), test_bound_cuts_whole_escapes_at_the_message_limit |
+| e/N1-S08: the stdout error handler of the `--format` check untested | subprocess tests with `PYTHONIOENCODING=ascii:backslashreplace` and `ascii:replace`, exit 0 with the replaced text | test_cli_output::test_the_format_check_uses_the_error_handler_of_stdout |
+| e/N2-S07: the `utf-8` fallback untested, and a closed stdout ended in a traceback | the fallback is reachable with a stdout that has no encoding (`io.StringIO`), now tested; a missing stdout (`>&-`) gives one line, "stepdates: error: there is no standard output to write to", and status 2 | test_cli_output::test_a_stdout_without_an_encoding_takes_utf_8, test_no_standard_output_is_a_one_line_error |
+| e/N3-S15: the `quote()` boundary at a repr of 83 characters untested | covered by the new rule's tests: `'x' * 78 + TAB` is shown whole, `'x' * 79 + TAB` is cut to the 79 x's with its length | test_messages::test_quote_bounds |
+| e/N4-S19-S20: the 80/81 boundary of `scrub()` untested | whole error lines for 80 characters (raw) and 81 (quoted), and for an ambiguous option of 80 (raw) and 104 (quoted) | test_cli_errors::test_the_whole_error_line |
+| e/N5-S22-S24: the exact text of the scrubbed messages untested | whole error lines for `--inclusive=<100 y>`, `--bogus=<100 y>`, an ambiguous option, three and five unrecognized arguments, and an odd one | test_cli_errors::test_the_whole_error_line |
+| e/N6-S27: escaping tested with ESC only | newline, carriage return, BEL, NEL (C1), U+2028 and a forged "stepdates: error:" line, in unrecognized, ambiguous and explicit-argument messages: the error stays on one printable line | test_cli_errors::test_no_argument_starts_a_new_line |
+
+The CHANGELOG 1.0.0 section records the behaviour changes of this round: the `quote()` rule,
+the listing of unrecognized arguments, the 500-character message bound and status 2 without
+a standard output.
+
+Mutants of this round, each applied alone to a copy of the fixed tree with the six CLI and
+message test files run with `-x`: 19 written against the round 2 code, 18 killed. The one
+survivor is equivalent: `quote()` starting from 81 characters instead of 80 changes nothing,
+because 81 characters always give a `repr` of at least 83, so the loop cuts back to 80 first.
+Two more candidates were not run because they are equivalent by construction: the early
+return of short `repr` runs in `scrub()` (any threshold up to 82 gives the same text, since
+`quote()` shows such a value whole), and `fail()` without `bound()` (the tool's own messages
+are built from `quote()` and are short and printable already).
+
+| Mutant | Caught by |
+| --- | --- |
+| `quote` cut at a repr of 83 (S15) | test_messages::test_quote_bounds |
+| `quote` starts from 81 characters | equivalent (see above) |
+| a short escaped value cut without its length | test_messages::test_quote_bounds |
+| listing quotes 80 characters (S19) | test_cli_errors::test_the_whole_error_line[80 whole] |
+| listing shows 81 characters raw (S20) | test_cli_errors::test_the_whole_error_line[81 quoted] |
+| listing shows odd arguments raw | test_cli_errors::test_the_whole_error_line[odd] |
+| four extras listed | test_cli_errors::test_the_whole_error_line[many] |
+| "and 0 more" | test_cli_errors::test_the_whole_error_line[three] |
+| message cut at 499 | test_cli_errors::test_bound_cuts_whole_escapes_at_the_message_limit |
+| control characters kept (S27) | test_cli_errors::test_no_argument_starts_a_new_line |
+| ambiguous option of 80 quoted | test_cli_errors::test_the_whole_error_line[ambiguous 80] |
+| ambiguous option left raw | test_cli_errors::test_the_whole_error_line[ambiguous] |
+| `repr` runs not bounded | test_cli_errors::test_the_whole_error_line[explicit argument] |
+| `repr` runs quoted twice | test_cli_errors::test_the_whole_error_line[explicit argument] |
+| argparse messages not scrubbed | test_cli_errors::test_the_whole_error_line[explicit argument] |
+| no check for a missing stdout | test_cli_output::test_no_standard_output_is_a_one_line_error |
+| `utf-8` fallback to `ascii` (S07) | test_cli_output::test_a_stdout_without_an_encoding_takes_utf_8 |
+| stdout error handler ignored (S08) | test_cli_output::test_the_format_check_uses_the_error_handler_of_stdout |
+| unrecognized arguments ignored | test_cli_errors::test_the_whole_error_line[80 whole] |
+
+Lens c's seeded fuzz (`fuzz2.py`, seeds 11 and 22, 5,000 iterations each, CPython 3.13.2)
+found no problem on the fixed tree.
+
+Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC texts fetched,
+`STEPDATES_E2E=1`), each command on its own: `ruff format --check .`, `ruff check .`,
+`mypy --strict src`, `mypy --strict src tests` and `pytest` all exit 0.
+
 ## Disputed findings
 
-None in round 1.
+None in round 1 or round 2.
 
 ## Independent review (item 16)
 

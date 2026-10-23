@@ -69,10 +69,11 @@ clock (09:00 stays 09:00 across a clock change). A term that lands on a wall tim
 takes the first occurrence (`fold=0`); a term inside a gap keeps that wall time, which
 `astimezone()` reads with the offset before the gap. With `invalid="skip"` a term inside a
 gap is dropped instead (RFC 5545 3.3.5 and 3.3.10). A `tzinfo` whose `dst()` returns `None` or
-is not implemented cannot convert from UTC, so it has no gap to find and nothing is dropped for
-it. A `tzinfo` whose `utcoffset()` is `None` makes the value naive, as Python counts it. `stop`
-must match `start`: both dates, both naive or both aware. An aware `stop` is compared as an
-instant.
+is not implemented, and that keeps the default `fromutc()`, cannot convert from UTC, so it has
+no gap to find and nothing is dropped for it; one that implements its own `fromutc()` has its
+gaps found as usual. A `tzinfo` whose `utcoffset()` is `None` makes the value naive, as Python
+counts it. `stop` must match `start`: both dates, both naive or both aware. An aware `stop` is
+compared as an instant.
 
 The example uses `zoneinfo`, which reads the system's IANA time zone database. Windows has none,
 so there (or on any system without one) run `pip install tzdata` first.
@@ -97,7 +98,9 @@ print([d.day for d in date_range(start, until, inclusive=True)])
 ## Errors
 
 Every error names the argument at fault (`value` for `shift`, `start` for `date_range`) and
-quotes at most 80 characters of it, with control characters escaped.
+quotes it as its `repr` with at most 80 characters between the quotes, control characters
+escaped. A value that does not fit is cut between two of its characters and followed by its
+length.
 
 | Raised | When |
 | --- | --- |
@@ -119,8 +122,11 @@ and STOP are read by `date.fromisoformat`, then `datetime.fromisoformat`. Output
 value per line, or a `strftime` pattern with `--format`. A dash-led step works without `=`:
 `-s -P1M`. Exit status: 0 on success (also when the reader closes the pipe early), 1 when a
 count runs past year 9999 (after printing the values that fit), 2 for bad input, which includes
-a `--format` whose output the encoding of standard output cannot hold. Error messages, also
-the ones about unknown or malformed options, quote at most 80 characters of an argument.
+a `--format` whose output the encoding of standard output cannot hold, and when there is no
+standard output at all. Error messages, also the ones about unknown or malformed options,
+quote at most 80 characters of an argument and list at most three unrecognized arguments
+(then how many more there are); a message over 500 characters is cut there and followed by
+its length.
 
 ## Typing
 

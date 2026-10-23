@@ -102,3 +102,28 @@ def test_skip_never_reads_an_offsetless_value_as_local_time(day: tuple[int, int,
     assert list(date_range(start, count=3, invalid="skip")) == [
         start + timedelta(days=n) for n in range(3)
     ]
+
+
+class _GapWithoutDst(tzinfo):
+    """+01:00, then +02:00 from 2026-03-29 02:00; dst() is None but fromutc() is its own."""
+
+    CHANGE = datetime(2026, 3, 29, 2)
+
+    def utcoffset(self, dt: datetime | None) -> timedelta:
+        return 2 * HOUR if dt is not None and dt.replace(tzinfo=None) >= self.CHANGE else HOUR
+
+    def dst(self, dt: datetime | None) -> None:
+        return None
+
+    def tzname(self, dt: datetime | None) -> str:
+        return "gap"
+
+    def fromutc(self, dt: datetime) -> datetime:
+        wall = dt.replace(tzinfo=None) + HOUR
+        return (wall + HOUR if wall >= self.CHANGE else wall).replace(tzinfo=self)
+
+
+def test_a_zone_without_dst_that_converts_from_utc_has_its_gap_dropped() -> None:
+    start = datetime(2026, 3, 27, 2, 30, tzinfo=_GapWithoutDst())
+    assert [value.day for value in date_range(start, count=3)] == [27, 28, 29]
+    assert [value.day for value in date_range(start, count=3, invalid="skip")] == [27, 28, 30]

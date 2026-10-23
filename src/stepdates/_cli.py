@@ -9,10 +9,11 @@ import re
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime
+from gettext import gettext
 from typing import NoReturn
 
 from stepdates import __version__
-from stepdates._quote import quote, scrub
+from stepdates._quote import bound, listing, quote, scrub
 from stepdates._range import date_range
 from stepdates._step import MAX_DIGITS
 
@@ -54,10 +55,13 @@ def _join_negative_steps(argv: Sequence[str]) -> list[str]:
 
 
 class _Parser(argparse.ArgumentParser):
-    args: Sequence[str] = ()
-
     def error(self, message: str) -> NoReturn:
-        super().error(scrub(message, self.args))
+        """argparse's own messages, which may echo an argument whole."""
+        self.fail(scrub(message))
+
+    def fail(self, message: str) -> NoReturn:
+        """The tool's own messages, whose values are already quoted."""
+        super().error(bound(message))
 
 
 def _parser() -> _Parser:
@@ -92,14 +96,20 @@ def _output_encoding() -> tuple[str, str]:
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for ``stepdates`` and ``python -m stepdates``; returns the exit code."""
     parser = _parser()
-    parser.args = _join_negative_steps(sys.argv[1:] if argv is None else argv)
-    args = parser.parse_args(parser.args)
+    args, extras = parser.parse_known_args(
+        _join_negative_steps(sys.argv[1:] if argv is None else argv)
+    )
+    if extras:  # listed here rather than by argparse, which joins them all whole
+        parser.fail(gettext("unrecognized arguments: %s") % listing(extras))
+    if sys.stdout is None:  # started with standard output closed
+        print("stepdates: error: there is no standard output to write to", file=sys.stderr)
+        return 2
     if args.format:
         try:  # UnicodeEncodeError is a ValueError: the output must be able to hold the text
             sample = args.start.strftime(args.format)
             sample.encode(*_output_encoding())
         except ValueError as error:
-            parser.error(f"invalid --format {quote(args.format)}: {error}")
+            parser.fail(f"invalid --format {quote(args.format)}: {error}")
     try:
         values = date_range(
             args.start,
@@ -111,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             end_of_month=args.end_of_month,
         )
     except (TypeError, ValueError) as error:
-        parser.error(str(error))
+        parser.fail(str(error))
     try:
         for value in values:
             text = value.strftime(args.format) if args.format else value.isoformat()

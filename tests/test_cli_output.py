@@ -114,3 +114,29 @@ def test_short_unknown_arguments_are_named_as_given(capsys: pytest.CaptureFixtur
     code, err = _run(["2026-01-01", "2026-01-03", "--colour", "x"], capsys)
     assert code == 2
     assert err.endswith("stepdates: error: unrecognized arguments: --colour x\n")
+
+
+def test_no_standard_output_is_a_one_line_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(sys, "stdout", None)
+    assert main(["2026-01-01", "-n", "1", "-f", "%d \u6708"]) == 2
+    assert capsys.readouterr().err == "stepdates: error: there is no standard output to write to\n"
+
+
+def test_a_stdout_without_an_encoding_takes_utf_8(monkeypatch: pytest.MonkeyPatch) -> None:
+    sink = io.StringIO()  # its encoding is None
+    monkeypatch.setattr(sys, "stdout", sink)
+    assert main(["2026-01-01", "-n", "2", "-f", "%d \u6708"]) == 0
+    assert sink.getvalue() == "01 \u6708\n02 \u6708\n"
+
+
+@pytest.mark.parametrize(
+    ("handler", "shown"), [("backslashreplace", b"01 \\u6708"), ("replace", b"01 ?")]
+)
+def test_the_format_check_uses_the_error_handler_of_stdout(handler: str, shown: bytes) -> None:
+    result = _module(
+        "2026-01-01", "-n", "2", "-f", "%d \u6708", PYTHONIOENCODING=f"ascii:{handler}"
+    )
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == [shown, shown.replace(b"01", b"02")]

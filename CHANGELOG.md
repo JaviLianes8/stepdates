@@ -24,16 +24,23 @@ change only in a new major version. The GUIDE describes all of it.
   past Python's 4,300-digit conversion limit raised that limit's own `ValueError`, and smaller
   ones could never give a second value anyway.
 - An `invalid` argument that is not a `str` raises `TypeError` instead of `ValueError`.
-- Error messages quote at most 80 characters of the value at fault (a value of up to 80
-  characters whole), followed by its length when it is longer, with control characters
-  escaped, in the library and in the command line. Before, the whole value was echoed. In
-  the command line this covers the messages about unknown or malformed options too.
+- Error messages quote the value at fault as its `repr`, with at most 80 characters between
+  the quotes and control characters escaped, in the library and in the command line. A value
+  that does not fit (over 80 characters, or a shorter one whose escapes such as `\t` make its
+  `repr` longer) is cut between two of its characters, never inside an escape, and followed
+  by its length. Before, the whole value was echoed. In the command line this covers the
+  messages about unknown or malformed options too: unrecognized arguments are listed up to
+  three, followed by how many more there are, and a message over 500 characters is cut there
+  and followed by its length. Building a message takes time linear in its length, however
+  many arguments there are.
 - The errors of `shift` name its own argument, `value`; before they said `start`.
 - The `OverflowError` of a `count` range says "after 1 value" when one value fits.
 - The command line `--count` accepts at most 18 digits.
 - The command line exits with status 2 and a one-line message when the output encoding cannot
   hold a value (a `--format` with characters the terminal or file encoding lacks). Before, it
   stopped with a traceback and status 1.
+- The command line started without a standard output (closed with `>&-`) exits with status 2
+  and a one-line message. Before, it stopped with a traceback and status 1.
 
 ### Fixed
 
