@@ -11,7 +11,11 @@ from collections.abc import Sequence
 from datetime import date, datetime
 
 from stepdates import __version__
+from stepdates._quote import quote
 from stepdates._range import date_range
+from stepdates._step import MAX_DIGITS
+
+_COUNT = re.compile(rf"[+-]?[0-9]{{1,{MAX_DIGITS}}}")
 
 
 def _when(text: str) -> date:
@@ -22,12 +26,16 @@ def _when(text: str) -> date:
     try:
         return datetime.fromisoformat(text)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"not an ISO 8601 date or datetime: {text!r}") from None
+        raise argparse.ArgumentTypeError(
+            f"not an ISO 8601 date or datetime: {quote(text)}"
+        ) from None
 
 
 def _count(text: str) -> int:
-    if not re.fullmatch(r"[+-]?[0-9]+", text):
-        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}")
+    if not _COUNT.fullmatch(text):
+        raise argparse.ArgumentTypeError(
+            f"not a whole number of at most {MAX_DIGITS} digits: {quote(text)}"
+        )
     return int(text)
 
 
@@ -76,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             args.start.strftime(args.format)
         except ValueError as error:
-            parser.error(f"invalid --format {args.format!r}: {error}")
+            parser.error(f"invalid --format {quote(args.format)}: {error}")
     try:
         values = date_range(
             args.start,
