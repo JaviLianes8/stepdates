@@ -41,7 +41,7 @@ Progress:
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
-| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent |
+| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4 |
 | 19 | Five independent QA lenses | pending |
 
 ## Baseline on 0.2.0 (before any change)
@@ -154,6 +154,17 @@ the fetched RFC texts, `-x`, 300 s per test. Killed by the first failing test sh
 | 36 | a term equal to the stop not special-cased | doctest of `date_range` |
 | 37 | 29 February treated as missing | doctest of `date_range` |
 
+A second round of 64 mutants on aa13b7b, written independently, left four alive. Each was a real
+gap in the tests, not an equivalent mutant; c0c97d4 adds the tests below, and each of the four
+now fails the suite when applied alone:
+
+| # | Mutation | Caught by |
+| --- | --- | --- |
+| 38 | the sign of a size counted as one of its 18 digits | test_hostile::test_a_sign_is_not_counted_as_a_digit |
+| 39 | a wall time whose UTC instant leaves year 9999 treated as missing (dropped by `skip`) | test_datetime::test_an_aware_value_near_year_9999_is_not_dropped_by_skip |
+| 40 | an aware stop whose UTC instant leaves years 1 to 9999 raises instead of comparing by wall time | test_datetime::test_an_aware_stop_near_year_9999_compares_by_wall_time |
+| 41 | aware decided by `tzinfo is not None` instead of `utcoffset() is not None` | test_datetime::test_a_tzinfo_without_an_offset_is_naive |
+
 ## Packaging, e2e and Pythons (items 8, 10, 13, 14)
 
 - `tests/test_e2e_wheel.py` (`STEPDATES_E2E=1`) builds the wheel and sdist, checks that the
@@ -162,11 +173,12 @@ the fetched RFC texts, `-x`, 300 s per test. Killed by the first failing test sh
   installs the wheel in a fresh venv, uses it from an empty folder with `-I` and drives the
   `stepdates` script and `python -m stepdates` by subprocess (version, steps, a backward
   inclusive range, exit status 2). `twine check --strict` passes on both.
-- Every interpreter on this PC from `requires-python` up, at a6f8d79: wheel installed in a
+- Every interpreter on this PC from `requires-python` up, at c0c97d4: wheel installed in a
   fresh venv, the sdist's suite run against it with `src` removed and the RFC texts fetched,
   plus the installed package's doctests: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2
-  and 3.14.2 free-threaded, 1975 passed and 1 skipped each (the e2e test, which runs in the
-  gates), 3 doctest modules passed each. 3.9.25 refuses the wheel (`>=3.10`).
+  and 3.14.2 free-threaded, 1980 passed and 1 skipped each (the e2e test, which runs in the
+  gates), 3 doctest modules passed each; `twine check --strict` passed on both files.
+  3.9.25 refuses the wheel (`>=3.10`). The same run at a6f8d79 gave 1975 passed each.
 
 ## Gates (item 15)
 
@@ -174,6 +186,9 @@ At a6f8d79 on another machine from a fresh clone, each command on its own, with 
 texts and `STEPDATES_E2E=1`: `ruff format --check .`, `ruff check .`, `mypy --strict src`,
 `mypy --strict src tests` and `pytest` (1978 passed, 1 skipped: the .NET re-run, PowerShell 7
 is not installed there; it passes on this PC) all exit 0.
+
+At c0c97d4 on this PC (PowerShell 7 present), the same five commands with the RFC texts and
+`STEPDATES_E2E=1` all exit 0; `pytest` collects 1984 tests and doctests.
 
 ## QA lenses (item 19)
 
