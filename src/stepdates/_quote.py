@@ -5,9 +5,11 @@ from __future__ import annotations
 LIMIT = 80
 
 
-def quote(value: object) -> str:
+def quote(value: str) -> str:
     """``repr`` of ``value``, cut to ``LIMIT`` characters so a huge input stays out of messages."""
-    if isinstance(value, str) and len(value) > LIMIT:
-        return f"{value[:LIMIT]!r}... ({len(value)} characters)"
-    text = repr(value)
-    return text if len(text) <= LIMIT else f"{text[:LIMIT]}... ({type(value).__name__})"
+    text = repr(value[:LIMIT])
+    if len(text) > LIMIT:  # escapes such as \t or \U0001f600 make the repr longer
+        text = text[:LIMIT] + "..."
+    elif len(value) > LIMIT:
+        text += "..."
+    return text if len(value) <= LIMIT else f"{text} ({len(value)} characters)"
