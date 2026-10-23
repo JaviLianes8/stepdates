@@ -33,7 +33,7 @@ Progress:
 | 7 | Real ground truth | PASS: RFC 5545 and RFC 3339 fetched live, python-dateutil 3.0.0, .NET 10.0.12 `DateTime` output |
 | 8 | Real e2e from the wheel | PASS: wheel in a fresh venv, used from an empty folder with `-I`, CLI driven by subprocess; no PyPI release to upgrade from |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
-| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1) |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1) and 335f2a4 (QA round 2) |
 | 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, badge, GUIDE and CHANGELOG linked |
 | 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-23 |
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
@@ -262,7 +262,7 @@ Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC text
 `mypy --strict src`, `mypy --strict src tests` and `pytest` (2043 passed, none skipped) all
 exit 0.
 
-### Round 2 (reviewed at eeea114)
+### Round 2 (reviewed at eeea114, fixed in 5bc799c and 335f2a4)
 
 Every round 1 finding was confirmed fixed by its lens (a, c, d and e re-ran their repros at
 eeea114). New findings came from lenses a, c, d and e; a defect reported by several lenses is
@@ -275,7 +275,7 @@ eeea114 and passes now. No finding is disputed.
 | a/N2: GUIDE said nothing is dropped for any tzinfo whose `dst()` is None | narrowed to such a tzinfo that keeps the default `fromutc()`; one with its own `fromutc()` has its gaps dropped by `skip` | test_tzinfo::test_a_zone_without_dst_that_converts_from_utc_has_its_gap_dropped |
 | c/N1: on 3.10 and 3.11 `-hTAIL` echoed TAIL whole ("ignored explicit argument") | `scrub()` no longer looks for the arguments in the message. argparse echoes a refused argument raw only in two messages: "unrecognized arguments", now listed by the tool itself, and "ambiguous option", whose option is quoted. Every other echo is a `repr`, and every `repr` in the message longer than 80 characters becomes the `quote()` of its value, whatever part of an argument it came from | test_cli_errors::test_a_dash_h_tail_is_quoted_as_older_pythons_report_it (the 3.10 message, any interpreter), test_a_dash_h_tail_is_never_echoed; on 3.10.19 and 3.11.5 the reviewer's repro now gives 333 bytes on stderr and the 1,000,000-character in-process case 333 characters |
 | c/N2: `scrub()` was quadratic in the number of long arguments, and the message had no size bound | one pass over the message; unrecognized arguments are listed up to three, then "and N more"; `bound()` escapes control characters and cuts a message over 500 characters, with its length. 8,000 arguments of 81 characters now take 0.003 s (10.7 s before) for 524 characters of stderr | test_cli_errors::test_many_long_arguments_take_linear_time, test_many_long_arguments_give_a_short_message (unrecognized and ambiguous shapes), test_bound_cuts_whole_escapes_at_the_message_limit |
-| e/N1-S08: the stdout error handler of the `--format` check untested | subprocess tests with `PYTHONIOENCODING=ascii:backslashreplace` and `ascii:replace`, exit 0 with the replaced text | test_cli_output::test_the_format_check_uses_the_error_handler_of_stdout |
+| e/N1-S08: the stdout error handler of the `--format` check untested | subprocess tests with `PYTHONIOENCODING=ascii:backslashreplace` and `ascii:replace` and a format with an accented letter (one that strftime takes on 3.10 and 3.11 under Windows too), exit 0 with the replaced text | test_cli_output::test_the_format_check_uses_the_error_handler_of_stdout |
 | e/N2-S07: the `utf-8` fallback untested, and a closed stdout ended in a traceback | the fallback is reachable with a stdout that has no encoding (`io.StringIO`), now tested; a missing stdout (`>&-`) gives one line, "stepdates: error: there is no standard output to write to", and status 2 | test_cli_output::test_a_stdout_without_an_encoding_takes_utf_8, test_no_standard_output_is_a_one_line_error |
 | e/N3-S15: the `quote()` boundary at a repr of 83 characters untested | covered by the new rule's tests: `'x' * 78 + TAB` is shown whole, `'x' * 79 + TAB` is cut to the 79 x's with its length | test_messages::test_quote_bounds |
 | e/N4-S19-S20: the 80/81 boundary of `scrub()` untested | whole error lines for 80 characters (raw) and 81 (quoted), and for an ambiguous option of 80 (raw) and 104 (quoted) | test_cli_errors::test_the_whole_error_line |
@@ -320,9 +320,17 @@ are built from `quote()` and are short and printable already).
 Lens c's seeded fuzz (`fuzz2.py`, seeds 11 and 22, 5,000 iterations each, CPython 3.13.2)
 found no problem on the fixed tree.
 
+Interpreters at 335f2a4: wheel and sdist built from a clean clone (`twine check --strict`
+passes both), the wheel installed in a fresh venv per interpreter, the sdist's suite run
+against it with the fetched RFC texts. CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and
+3.14.2 free-threaded gave 2087 passed and 1 skipped each (the opt-in e2e test, which runs in
+the gates), and the doctests pass on all six. The first run at 5bc799c failed 3 tests on 3.10
+and 3.11 only: the new stdout encoding tests used a CJK format, which strftime refuses there
+under Windows; 335f2a4 switched them to an accented letter.
+
 Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC texts fetched,
 `STEPDATES_E2E=1`), each command on its own: `ruff format --check .`, `ruff check .`,
-`mypy --strict src`, `mypy --strict src tests` and `pytest` all exit 0.
+`mypy --strict src`, `mypy --strict src tests` and `pytest` (2091 passed) all exit 0.
 
 ## Disputed findings
 
