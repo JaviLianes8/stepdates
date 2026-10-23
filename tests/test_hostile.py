@@ -75,6 +75,14 @@ def test_eighteen_digits_are_still_a_step() -> None:
         shift(date(2026, 1, 1), "P" + "9" * 18 + "D")
 
 
+@pytest.mark.parametrize("sign", ["+", "-"])
+def test_a_sign_is_not_counted_as_a_digit(sign: str) -> None:
+    assert parse_step(sign + "9" * 18 + " days").days == int(sign + "9" * 18)
+    assert parse_step(sign + "P" + "9" * 18 + "M").months == int(sign + "9" * 18)
+    with pytest.raises(ValueError, match="more than 18 digits"):
+        parse_step(sign + "9" * 19 + " days")
+
+
 @pytest.mark.parametrize("space", [chr(c) for c in (0xA0, 0x2003, 0x3000, 0x200B, 0x85)])
 def test_only_ascii_whitespace_surrounds_a_step(space: str) -> None:
     for text in (f"{space}P1M", f"month{space}", f"1{space}month"):
