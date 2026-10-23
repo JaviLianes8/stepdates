@@ -26,14 +26,14 @@ Progress:
 | --- | --- | --- |
 | 1 | Public API reviewed for stability | PASS: 3 names kept, signatures pinned by `tests/test_contract_api.py`; behaviour changes in the CHANGELOG |
 | 2 | `__all__` exact, no private imports in docs | PASS |
-| 3 | Docstrings with runnable examples, doctests | PASS: doctests in 3 modules; README (3 blocks) and GUIDE (2 blocks) run as tests |
+| 3 | Docstrings with runnable examples, doctests | PASS: doctests in 3 modules; README (3 blocks) and GUIDE (2 blocks) run as tests; `InvalidPolicy` carries an attribute docstring whose examples a contract test runs (reasoned exception for the alias: QA round 1, A8) |
 | 4 | Typed end to end | PASS: `mypy --strict src tests`, `py.typed`, consumer typing checked by `tests/test_typing.py` |
-| 5 | Typed, documented, bounded errors | PASS: `TypeError`, `ValueError`, `OverflowError`, each case documented in the docstrings and GUIDE; messages quote at most 80 characters |
+| 5 | Typed, documented, bounded errors | PASS: `TypeError`, `ValueError`, `OverflowError`, each case documented in the docstrings and GUIDE; messages quote at most 80 characters with control characters escaped, the argument parser's own messages included (QA round 1) |
 | 6 | Contract tests of every public name | PASS |
 | 7 | Real ground truth | PASS: RFC 5545 and RFC 3339 fetched live, python-dateutil 3.0.0, .NET 10.0.12 `DateTime` output |
 | 8 | Real e2e from the wheel | PASS: wheel in a fresh venv, used from an empty folder with `-I`, CLI driven by subprocess; no PyPI release to upgrade from |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
-| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1) |
 | 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, badge, GUIDE and CHANGELOG linked |
 | 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-23 |
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
@@ -41,8 +41,8 @@ Progress:
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
-| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4 |
-| 19 | Five independent QA lenses | pending |
+| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c |
+| 19 | Five independent QA lenses | round 1: lenses a, c, d and e reported 23 findings, all fixed (see QA lenses); re-verification pending |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -192,7 +192,79 @@ At c0c97d4 on this PC (PowerShell 7 present), the same five commands with the RF
 
 ## QA lenses (item 19)
 
-Pending.
+### Round 1 (reviewed at ea4eab6, fixed in 4c6e83b and b6c505c)
+
+Lenses a (API and docs), c (adversarial), d (packaging and e2e) and e (contract strength)
+reported findings; a defect reported by several lenses is listed once with every id. Each
+behaviour fix was first written as a test that failed on ea4eab6 and passes now. No finding
+is disputed.
+
+| Finding | Resolution | Test |
+| --- | --- | --- |
+| a/A1: `shift` errors said `start` | `check_start` and `check_end_of_month` take the argument name; `shift` passes `value` | test_messages::test_shift_names_its_own_argument, test_date_range_names_start |
+| a/A2: GUIDE said month ends always exist | GUIDE narrowed to dates and naive datetimes; an aware month end in a gap is dropped by `skip` | test_tzinfo::test_an_aware_month_end_inside_a_gap_is_dropped_by_skip |
+| a/A3, d/F2: zone examples need tzdata on Windows | README and GUIDE say `pip install tzdata` next to the `zoneinfo` examples | test_docs::test_the_zone_examples_say_they_need_a_time_zone_database |
+| a/A4, c/F2: argparse echoed whole arguments | `_Parser.error` passes the argparse message through `scrub()`: every argument (or value after `=`) over 80 characters becomes its `quote()`, and control characters are escaped | test_cli_output::test_argparse_errors_quote_at_most_a_short_prefix (unrecognized, unknown option, ambiguous option, explicit argument, secret-shaped), test_argparse_errors_escape_control_characters, test_short_unknown_arguments_are_named_as_given |
+| a/A5, c/F1, d/F1: traceback and status 1 when stdout cannot encode the `--format` output | the `--format` check also encodes the sample with the encoding and error handler of stdout (status 2, `invalid --format`); a value that still fails in the output loop gives a one-line `stepdates: error:` and status 2; the same status on every interpreter | test_cli_output::test_a_format_the_output_cannot_encode_exits_two (CJK and a check mark on cp1252, a lone surrogate on UTF-8), test_a_value_the_output_cannot_encode_exits_two, test_a_cp1252_pipe_gets_no_traceback (subprocess) |
+| a/A6: "after 1 values" | singular for one value | test_messages::test_the_overflow_message_counts_in_words |
+| a/A7: GUIDE signature lacked `*` | `shift(value, step, *, end_of_month=False)` | docs |
+| a/A8: `InvalidPolicy.__doc__` is None | `__doc__` is not assigned: typing caches `Literal["clamp", "skip"]`, so the text would leak to every identical literal in the process. Reasoned exception for the alias under item 3: an attribute docstring with a runnable example sits under the assignment in `_range.py` (read by Sphinx and editors), and the package docstring keeps its doctest | test_contract_api::test_the_policy_alias_has_an_attribute_docstring_with_a_running_example (runs its examples) |
+| a/A9: CONTRIBUTING claimed no test touches disk or processes | reworded to the real layout: pure unit tests, subprocess CLI tests, the opt-in wheel test, and the .NET and RFC tests that skip without their tool or texts | docs |
+| c/F3: `skip` with a tzinfo whose `dst()` is None or missing raised during iteration | `exists()` also catches `ValueError` and `NotImplementedError` from the default `fromutc()`: such a zone has no gap to find, so the term is kept | test_tzinfo::test_skip_with_a_zone_without_gaps_follows_the_naive_range, test_skip_with_a_zone_without_gaps_and_a_stop |
+| e/F1-I04: `python -m` exit status untested | subprocess tests from the source tree and from the installed wheel assert status 1 | test_cli_output::test_python_dash_m_exits_one_after_the_values_that_fit_in_order, test_e2e_wheel |
+| e/F2-X21: `skip` never run on an offsetless tzinfo | tests for day and month steps; after the c/F3 fix the mutant only differs where the value would be read as local time, so a test pins years 1, 1969 and 9999 | test_tzinfo::test_skip_with_a_zone_without_gaps_follows_the_naive_range, test_skip_never_reads_an_offsetless_value_as_local_time |
+| e/F3-X47: naive start with an offsetless stop untested | both directions, plus an aware start with an offsetless stop | test_tzinfo::test_a_naive_start_takes_an_offsetless_stop_and_the_mirror |
+| e/F4-R22: `inclusive` with `count=0` untested | added to the error contract | test_contract_api::test_date_range_raises_the_documented_error_at_call_time |
+| e/F5-L13: order of values and overflow message untested | stderr merged into stdout, order asserted | test_cli_output::test_python_dash_m_exits_one_after_the_values_that_fit_in_order |
+| e/F6-Q03: escaping untested | library messages (step, `invalid`) and the tool (START, STOP, `--count`, `--step`, argparse) | test_messages::test_messages_escape_control_characters, test_the_tool_escapes_control_characters |
+| e/F7-S05: whitespace inside a step undocumented and untested | the GUIDE states that any ASCII whitespace or none separates count and unit; tests for both sides | test_step::test_any_ascii_whitespace_or_none_may_separate_a_count_and_its_unit, test_nothing_else_separates_a_count_and_its_unit |
+| e/F8-X35-X36: `quote()` boundaries untested | boundaries at 78 to 81 characters and for escaped text. One behaviour change: a value of up to 80 characters is now quoted whole (before, 79 and 80 characters lost the closing quote and gained `...`) | test_messages::test_quote_bounds, test_a_step_message_quotes_eighty_characters_at_the_boundary |
+
+The CHANGELOG 1.0.0 section records every behaviour change: the `quote()` boundary and
+escaping, `value` in `shift` errors, the singular overflow message, status 2 for output the
+encoding cannot hold, bounded argparse messages, and the `dst()` fix under Fixed.
+
+One test scope changed: the 200-line rule in `test_docs` no longer binds this report and
+`IMPROVEMENTS-round.md`. Both are records of the release work that grow with every round and
+neither is in the sdist; the em-dash check still reads them.
+
+Mutants of this round, each applied alone to a clone of b6c505c with the named test file run
+with `-x`: the 8 survivors reported by lens e, then 10 written against the round 1 fixes. All
+18 are killed.
+
+| Mutant | Caught by |
+| --- | --- |
+| I04 `sys.exit(main())` to `main()` in `__main__` | test_cli_output::test_python_dash_m_exits_one_after_the_values_that_fit_in_order |
+| X21 `exists` tests `tzinfo is None` | test_tzinfo::test_skip_never_reads_an_offsetless_value_as_local_time |
+| X47 `check_stop` tests `tzinfo is not None` | test_tzinfo::test_a_naive_start_takes_an_offsetless_stop_and_the_mirror |
+| R22 `inclusive` checked only for a non-zero count | test_contract_api::test_date_range_raises_the_documented_error_at_call_time |
+| L13 no flush before the overflow message | test_cli_output::test_python_dash_m_exits_one_after_the_values_that_fit_in_order |
+| Q03 `quote` without `repr` | test_messages::test_quote_bounds |
+| S05 only a space between count and unit | test_step::test_any_ascii_whitespace_or_none_may_separate_a_count_and_its_unit |
+| X35 `<=` to `<` on the length note | test_messages::test_quote_bounds |
+| X36 `>` to `>=` on the escape cut | test_messages::test_quote_bounds |
+| `scrub` keeps control characters | test_cli_output::test_argparse_errors_escape_control_characters |
+| `scrub` quotes nothing | test_cli_output::test_argparse_errors_quote_at_most_a_short_prefix |
+| `scrub` ignores the value after `=` | test_cli_output::test_argparse_errors_quote_at_most_a_short_prefix |
+| no encoding check of `--format` | test_cli_output::test_a_format_the_output_cannot_encode_exits_two |
+| no guard on the output loop | test_cli_output::test_a_value_the_output_cannot_encode_exits_two |
+| `exists` catches only `OverflowError` | test_tzinfo::test_skip_with_a_zone_without_gaps_follows_the_naive_range |
+| `shift` names `start` | test_messages::test_shift_names_its_own_argument |
+| always "values" | test_messages::test_the_overflow_message_counts_in_words |
+| parser errors not scrubbed | test_cli_output::test_argparse_errors_quote_at_most_a_short_prefix |
+
+Interpreters at b6c505c, fresh venvs on this PC, the suite with the fetched RFC texts:
+CPython 3.10.19, 3.11.5, 3.12.12, 3.14.2 and 3.14.2 free-threaded gave 2042 passed and 1
+skipped each (the e2e test, which runs in the gates on 3.13.2).
+
+Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC texts fetched,
+`STEPDATES_E2E=1`), each command on its own: `ruff format --check .`, `ruff check .`,
+`mypy --strict src`, `mypy --strict src tests` and `pytest` (2043 passed, none skipped) all
+exit 0.
+
+## Disputed findings
+
+None in round 1.
 
 ## Independent review (item 16)
 
