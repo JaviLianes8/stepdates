@@ -16,8 +16,9 @@ Progress:
 - [x] Docs: README, GUIDE, CHANGELOG (items 11, 12)
 - [x] Packaging, e2e, every Python (items 8, 10, 13, 14)
 - [x] Gates (item 15)
-- [ ] Five QA lenses report PASS (item 19)
-- [ ] Independent reviewer reports PASS (item 16)
+- [x] Five QA lenses report PASS (item 19)
+- [x] Independent reviewer reports PASS (item 16)
+- [x] Final gates on a fresh clone of `release/1.0.0`
 - [x] PR #3 and trace guard CLEAN (item 17); merge and publish left to the maintainer
 
 ## Scorecard
@@ -39,10 +40,10 @@ Progress:
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
 | 14 | sdist and wheel contents | PASS |
 | 15 | Gates each exit 0 | PASS: see Gates |
-| 16 | Independent reviewer | pending |
+| 16 | Independent reviewer | PASS: round 1 at 699fa55, every item pass (see Independent review) |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
 | 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction); round 4: lens e's survivor and 12 mutants of the argv rewriting killed on 3.13.2; round 5: lens e's 4 survivors killed on 3.11.5 and 3.13.2 |
-| 19 | Five independent QA lenses | rounds 1 to 5: every finding of lenses a, c, d and e fixed (see QA lenses); round 3 fixes confirmed in round 4 by lenses d and e, round 4 fixes in round 5 by lens e; re-verification of round 5 pending |
+| 19 | Five independent QA lenses | PASS: all five lenses report PASS (see QA verdicts); every finding of rounds 1 to 5 fixed and confirmed by its lens |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -478,10 +479,95 @@ own: `ruff format --check .`, `ruff check .`, `mypy --strict src`, `mypy --stric
 and `pytest` (2167 passed, 23 skipped: this interpreter has no time zone database and the
 working tree no fetched RFC texts) all exit 0.
 
+### Round 6 (reviewed at 699fa55, nothing to fix)
+
+Lens e confirmed the four round 5 survivors killed on CPython 3.10.19, 3.11.5, 3.12.12,
+3.13.2 and 3.14.2 by the tests named in round 5, and checked the new command lines by hand on
+3.10, 3.11 and 3.14 (same output on all three). It then swept `Escaped`, `Value.__call__`,
+`plain()` and `take_stop()` with 10 new probes: 9 killed on all five interpreters, and one
+equivalent: wrapping the stripped text while keeping the original value changes nothing,
+because argparse reads the wrapped text only to classify the argument (it always starts with
+the wrap mark, so it is always a positional), and every value and every output goes through
+the original. 22,064 differential command lines gave 0 differences between the original and
+that probe on each of the five interpreters, with no exception. Between 9c974b7 and 699fa55
+only tests and this report changed; `src` is identical to 4791a64.
+
+## QA verdicts (item 19)
+
+Each lens ran on its own, from its own clone, and reported back only. Rounds count every
+pass of that lens, re-verification included. The lens reports and their evidence (probe
+scripts, logs, fetched sources) are kept with the maintainer, outside the repository, in the
+local certification folder named below.
+
+| Lens | Rounds | Final verdict | Report | Commit |
+| --- | --- | --- | --- | --- |
+| a. API and docs | 4 | PASS | `stepdates-cert/lens-a-r4` | a77c968 |
+| b. Correctness and ground truth | 1 | PASS | `stepdates-cert/lens-b-r1` | ea4eab6 |
+| c. Adversarial and robustness | 4 | PASS | `stepdates-cert/lens-c-r4` | a77c968 |
+| d. Packaging and real e2e | 5 | PASS | `stepdates-cert/lens-d-r5/logs` | 9c974b7 |
+| e. Contract strength | 6 | PASS | `stepdates-cert/lens-e-r6` | 699fa55 |
+
+Lenses a and c gave their final PASS at a77c968; the later commits change only the command
+line's argument reading (`_argv.py`, `_cli.py`) and tests, which lenses d and e and the
+independent reviewer checked at 9c974b7 and 699fa55.
+
+Lens b (CPython 3.13.2 and 3.11, at ea4eab6), independent of the library's own tests:
+
+- Duration grammar: a matcher written by hand from the RFC 3339 Appendix A rules (text
+  fetched from rfc-editor.org on 2026-10-23), with the RFC 5545 sign and RFC 5234 case
+  rules and the documented refusals. Every string of up to 5 characters over
+  `P0127YMWDTHS+-` (579,194) and of up to 7 over `P1YMWDT-` (2,396,744), each also in lower
+  case and padded with ASCII blanks: 0 mismatches.
+- java.time (OpenJDK 21.0.8) as oracle for clamp, skip, stop (inclusive and exclusive),
+  `shift`, `end_of_month` and day, week and `timedelta` steps, years 1 to 3 and 9997 to 9999
+  and overflow included: 55,760 comparisons, 0 mismatches. A copy with the skip rule broken
+  gave 1,334 mismatches, so the check can fail.
+- Aware datetimes against java.time in 20 zones (Lord Howe, Troll, Apia 2011, Kiritimati,
+  Sao Paulo, Dublin, Casablanca, Sitka 1867 and others), years 1867 to 2023: wall clock, fold,
+  the instant per RFC 5545 3.3.5, skip dropping exactly the gap terms (3.3.10) and a UTC stop
+  at plus and minus one second. 867,260 terms (320 in gaps), 0 mismatches.
+- python-dateutil 3.0.0 `rrule`: 19,987 DAILY, WEEKLY, MONTHLY and YEARLY rules with INTERVAL,
+  COUNT and inclusive UNTIL against `invalid="skip"`: 0 mismatches.
+- RFC 5545 3.8.5.3 examples, expected dates parsed from the fetched text: 8 of 8, the
+  `BYMONTHDAY=15,30` invalid-date example included.
+- 4,084 hand-written probes and 20 command lines by subprocess on both interpreters: 0
+  failures. The README comparison rerun with pandas 3.1.0, python-dateutil 3.0.0, arrow 1.4.0
+  and pendulum 3.3.0: every row confirmed.
+
 ## Disputed findings
 
-None in rounds 1 to 5.
+None in rounds 1 to 6.
 
 ## Independent review (item 16)
 
-Pending.
+A fresh reviewer audited 699fa55 against the 19 items, running each check: a clone at
+699fa55, wheel and sdist built (hatchling 1.32.4), the README rendered, the wheel installed in
+a fresh venv per interpreter with the sdist's suite and the doctests run against it, a seeded
+command line fuzz, and six mutants of its own. Round 1 verdict: PASS, every item pass.
+
+| # | Item | Result |
+| --- | --- | --- |
+| 1 | Public API reviewed for stability | PASS |
+| 2 | `__all__` exact, no private imports in docs | PASS |
+| 3 | Docstrings with runnable examples, doctests | PASS: 3 doctest modules pass on every interpreter below |
+| 4 | Typed end to end | PASS |
+| 5 | Typed, documented, bounded errors | PASS |
+| 6 | Contract tests of every public name | PASS |
+| 7 | Real ground truth | PASS |
+| 8 | Real e2e from the wheel | PASS |
+| 9 | Seeded fuzz, no crash, hang or blowup | PASS: seeds 1 and 2, 6,000 command lines each, 0 problems on 3.10.19 and 3.14.2 |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.14.2 and 3.14.2 free-threaded, 2192 passed and 3 skipped each; 3.13.2 in the gates |
+| 11 | README and `twine check` | PASS |
+| 12 | Dated CHANGELOG section | PASS |
+| 13 | pyproject 1.0.0, Production/Stable | PASS |
+| 14 | sdist and wheel contents | PASS |
+| 15 | Gates each exit 0 | PASS |
+| 16 | Independent reviewer | PASS: this review |
+| 17 | PR and trace guard | PASS: PR #3 from `release/1.0.0`; merge and publish left to the maintainer |
+| 18 | Contracts bite (mutations) | PASS: the reviewer's 6 mutants (quote limit, month day, signed digit limit, late STOP, number rule, message limit) all killed |
+| 19 | Five independent QA lenses | PASS |
+
+One note, not a defect of the library: on CPython 3.10 the time argparse takes for 20,000
+unknown options or repeated `-s` options grows faster than linearly, with plain
+`parse_known_args` as much as with the intermixed form (11.7 s against 0.05 s on 3.13.2),
+so it comes from that Python's argparse. Every other shape scales linearly on both.
