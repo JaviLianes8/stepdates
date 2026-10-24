@@ -534,6 +534,20 @@ Lens b (CPython 3.13.2 and 3.11, at ea4eab6), independent of the library's own t
   failures. The README comparison rerun with pandas 3.1.0, python-dateutil 3.0.0, arrow 1.4.0
   and pendulum 3.3.0: every row confirmed.
 
+## Final gates (fresh clone of `release/1.0.0` at 10617cf)
+
+A fresh clone from GitHub on this PC, CPython 3.13.2, development requirements installed,
+RFC texts fetched, `STEPDATES_E2E=1`, each command on its own: `ruff format --check .`,
+`ruff check .`, `mypy --strict src`, `mypy --strict src tests` and `pytest` (2206 passed,
+none skipped) all exit 0. `python -m build` built `stepdates-1.0.0.tar.gz` and
+`stepdates-1.0.0-py3-none-any.whl`, and `twine check --strict` passes both. The wheel was
+installed in a throwaway venv, the sdist's suite run against it with `src` removed and the RFC
+texts present: 2192 passed and 3 skipped (the opt-in e2e test, and the two typing tests that
+need mypy, which that venv does not hold), exit 0; the installed package's 3 doctest modules
+pass; from an empty folder the `stepdates` script prints the documented month ends and
+`python -I -m stepdates` gives the version and status 2 with a one-line error for a bad STOP.
+The commit after 10617cf changes only this section.
+
 ## Disputed findings
 
 None in rounds 1 to 6.
