@@ -33,7 +33,7 @@ Progress:
 | 7 | Real ground truth | PASS: RFC 5545 and RFC 3339 fetched live, python-dateutil 3.0.0, .NET 10.0.12 `DateTime` output |
 | 8 | Real e2e from the wheel | PASS: wheel in a fresh venv, used from an empty folder with `-I`, CLI driven by subprocess; no PyPI release to upgrade from |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
-| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1) and 335f2a4 (QA round 2) |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1), 335f2a4 (QA round 2) and 9416dfb (QA round 3) |
 | 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, badge, GUIDE and CHANGELOG linked |
 | 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-23 |
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
@@ -41,8 +41,8 @@ Progress:
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
-| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c |
-| 19 | Five independent QA lenses | round 1: lenses a, c, d and e reported 23 findings, all fixed (see QA lenses); re-verification pending |
+| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction) |
+| 19 | Five independent QA lenses | rounds 1 to 3: every finding of lenses a, c, d and e fixed (see QA lenses), round 2 fixes confirmed in round 3; re-verification of round 3 pending |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -332,9 +332,75 @@ Gates on this PC after the round (CPython 3.13.2, PowerShell 7 present, RFC text
 `STEPDATES_E2E=1`), each command on its own: `ruff format --check .`, `ruff check .`,
 `mypy --strict src`, `mypy --strict src tests` and `pytest` (2091 passed) all exit 0.
 
+### Round 3 (reviewed at 9e69e30, fixed in 9416dfb)
+
+Every round 2 finding was confirmed fixed by its lens (a, c, d and e re-ran their repros and
+fuzz at 9e69e30). New findings came from lenses a, c, d and e; a defect reported by several
+lenses is listed once with every id. Each behaviour fix was first written as a test that
+failed on 9e69e30 (the parsing tests on 3.11.5, where the defect lives) and passes now. No
+finding is disputed.
+
+| Finding | Resolution | Test |
+| --- | --- | --- |
+| c/R3-1: `quote()` looped forever on a `str` subclass whose slices stay of the subclass and whose `repr` never gets shorter; `date_range(step=)`, `date_range(invalid=)` and `shift(step=)` reach it | `quote()` first takes the plain text of the value (`str.__str__`), so slicing, length and `repr` are those of `str`; the loop ends after at most 80 cuts. The three calls now raise `ValueError` at once | test_scrub::test_quote_reads_a_str_subclass_as_its_plain_text, test_a_str_subclass_is_refused_at_once (each under a 30 s timeout; both hung before) |
+| c/R3-2: `scrub()` was quadratic on text full of quote characters that never close, against its docstring and the CHANGELOG | the closing quote of a `repr` run is optional in the pattern, so an opening that never closes is passed over in one scan to the end of its line and left as it is, instead of being scanned again from each later quote character. 20,000 escaped quotes now take 0.004 s (7.1 s before) | test_scrub::test_scrub_is_linear_on_runs_of_quotes (5 shapes, 5,000 against 20,000), test_scrub_leaves_an_unclosed_quote_as_it_is |
+| d/N2 (and the note in e/RUN): an argparse message was bounded twice, so an ambiguous option made of wide escapes reported a length such as "(520 characters)" that matched nothing typed | `error()` hands the scrubbed message straight to argparse, so it is bounded once. An ambiguous option with a character that is not printable is now quoted like a long one, as unrecognized arguments already were, so the escaped text never outgrows the message | test_cli_error_edges::test_a_long_message_is_cut_once_and_names_its_own_length, test_the_error_line_at_the_edges[ambiguous wide escapes, ambiguous wider escapes, ambiguous tab] |
+| a/F1, d/N3: with standard output closed, `--help` and `--version` printed to standard error and exited 0, against the documented status 2 | the check for a missing standard output runs before the arguments are read, so every run without one gives the one-line error and status 2. The CHANGELOG and GUIDE say so, `--help` and `--version` included | test_cli_parsing::test_without_a_stdout_every_run_is_a_one_line_error (`--help`, `--version`, `-h`, a run with `--help` last, an unknown option, no arguments) |
+| a/F2: Python 3.10 and 3.11 refused a STOP that followed an option (`2026-01-01 --inclusive 2026-01-03`), 3.12 and later accepted it | the command line is read with `parse_known_intermixed_args`, so every supported Python reads options and START and STOP in any order. Recorded in the CHANGELOG, stated in the GUIDE | test_cli_parsing::test_stop_may_come_after_an_option (5 orders), test_extra_positionals_after_an_option_are_still_refused |
+| e/E1-C8: nothing pinned that the single-quoted branch of the `repr` pattern excludes the backslash | exact error line for `--inclusive=` with a value over 80 characters holding both quote kinds (its `repr` escapes the single quote), and a 30 s bound on `--s='` followed by 75 backslashes. With the new pattern no input backtracks, so the mutant no longer hangs; it is killed by the exact line | test_cli_error_edges::test_the_error_line_at_the_edges[explicit with both quotes, ambiguous unclosed quote and backslashes] |
+| e/E2-C7: the double-quoted branch untested | exact line for `--inclusive='` followed by 100 y | test_the_error_line_at_the_edges[explicit with a single quote] |
+| e/E3-C4: the `rpartition` of the ambiguous message untested | exact line for an ambiguous option that itself contains " could match " | test_the_error_line_at_the_edges[ambiguous naming the tail] |
+| e/E4-C3: the 81-character ambiguous option untested | exact line for an ambiguous option of 81 characters | test_the_error_line_at_the_edges[ambiguous 81] |
+| e/E5-C5: the `repr` boundary of 83 characters in `scrub()` untested | exact lines for `--inclusive=` with 80 and with 81 y | test_the_error_line_at_the_edges[explicit 80, explicit 81] |
+
+Lens a's second note (`bound()` cuts by the escaped length but reports the length of the
+message) is left as it is: `quote()`, `listing()` and the ambiguous-option rule escape what
+is not printable before `bound()` sees it, so the two lengths agree for every message the
+suite and the lenses produced.
+
+Mutants of this round, each applied alone to a copy of the fixed tree with the six CLI and
+message test files run with `-x` and a 60 s timeout on CPython 3.13.2: the five survivors of
+lens e and eight mutants of this round's fixes. Twelve are killed on 3.13.2. The thirteenth,
+plain `parse_known_args` instead of the intermixed form, survives there by construction (3.12
+and later already read STOP after an option) and is killed on 3.11.5 by
+test_stop_may_come_after_an_option, which every interpreter run of the suite includes.
+
+| Mutant | Caught by |
+| --- | --- |
+| single-quoted branch takes a backslash (E1-C8) | test_the_error_line_at_the_edges[explicit with both quotes] |
+| no double-quoted branch (E2-C7) | test_the_error_line_at_the_edges[explicit with a single quote] |
+| `partition` for `rpartition` (E3-C4) | test_the_error_line_at_the_edges[ambiguous naming the tail] |
+| ambiguous option of 81 left raw (E4-C3) | test_the_error_line_at_the_edges[ambiguous 81] |
+| `repr` run of 83 kept (E5-C5) | test_the_error_line_at_the_edges[explicit 81] |
+| `quote()` keeps the subclass (R3-1) | test_scrub::test_quote_reads_a_str_subclass_as_its_plain_text (timeout) |
+| ambiguous option that is not printable left raw (N2) | test_the_error_line_at_the_edges[ambiguous wide escapes] |
+| unclosed `repr` run quoted | test_the_error_line_at_the_edges[ambiguous unclosed quote and backslashes] |
+| closing single quote required again (R3-2) | test_scrub::test_scrub_is_linear_on_runs_of_quotes[escaped single quotes] |
+| closing double quote required again (R3-2) | test_scrub::test_scrub_is_linear_on_runs_of_quotes[escaped double quotes] |
+| argparse messages bounded twice (N2) | test_a_long_message_is_cut_once_and_names_its_own_length |
+| no check for a missing stdout before parsing (F1, N3) | test_without_a_stdout_every_run_is_a_one_line_error[argv0] |
+| `parse_known_args` instead of the intermixed form (F2) | test_stop_may_come_after_an_option[inclusive between] on 3.11.5; survives on 3.13.2 by construction |
+
+The reviewers' repros, run again by subprocess on the wheels built at 9416dfb: `--version`
+and `--help` with `>&-` exit 2 with the one-line error on 3.10.19, 3.11.5 and 3.14.2;
+`2026-01-01 --inclusive 2026-01-03` and `2026-01-01 -s week 2026-01-20` print three dates
+on all three; an ambiguous option of 76 U+200B or 76 U+E0001 gives one quoted line with
+"(80 characters)"; the three `Masked` calls raise `ValueError` at once; `scrub()` on 20,000
+escaped double quotes takes 0.004 s.
+
+Interpreters at 9416dfb: wheel and sdist built from a clean clone (`twine check --strict`
+passes both), the wheel installed in a fresh venv per interpreter, the sdist's suite run
+against it with the fetched RFC texts. CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and
+3.14.2 free-threaded gave 2121 passed and 1 skipped each (the opt-in e2e test, which runs in
+the gates), exit 0, and the doctests pass on all six.
+
+Gates on this PC after the round (CPython 3.13.2, RFC texts fetched, `STEPDATES_E2E=1`), each
+command on its own: `ruff format --check .`, `ruff check .`, `mypy --strict src`,
+`mypy --strict src tests` and `pytest` (2125 passed) all exit 0.
+
 ## Disputed findings
 
-None in round 1 or round 2.
+None in rounds 1 to 3.
 
 ## Independent review (item 16)
 
