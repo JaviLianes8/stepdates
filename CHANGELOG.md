@@ -49,10 +49,18 @@ change only in a new major version. The GUIDE describes all of it.
   option (`stepdates 2026-01-01 --inclusive 2026-01-03`) as an unrecognized argument, while
   3.12 and later accepted it, and after an unknown option they listed STOP among the
   unrecognized arguments (`stepdates 2026-01-01 --inclsive 2026-01-03`).
-- In the command line every argument after `--` is START or STOP, on every supported Python.
-  Before, Python 3.10 and 3.11 still read an option there
+- In the command line every argument after `--` is START or STOP, on every supported Python,
+  `-s` included. Before, Python 3.10 and 3.11 still read an option there
   (`stepdates -- 2026-01-01 2026-01-03 --inclusive` printed three dates) and refused a
-  dash-led argument there as a missing START.
+  dash-led argument there as a missing START, and on every Python `-s` there was still glued
+  to the next argument as if it were the step option.
+- In the command line an argument that starts like a negative number (`-1x`, `-1_0`) is read
+  as a value on every supported Python, as Python 3.14 reads it: START, STOP or the value of
+  the option before it. Before, 3.10 to 3.13 took it for an unknown option.
+- In the command line `--` as the value of an option (`--step=--`, `--count=--`,
+  `--format=--`) is read as that value on every supported Python. Before, Python 3.10 and 3.11
+  dropped it: `--step=--` failed with "step must be a str or a timedelta, not list", and
+  `--format=--` printed ISO 8601 dates.
 
 ### Fixed
 

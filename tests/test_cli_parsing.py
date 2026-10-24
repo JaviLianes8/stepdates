@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import sys
 
 import pytest
@@ -110,6 +111,61 @@ def test_unknown_options_and_double_dash_read_the_same_on_every_python(
     code, out, err = _run(argv, capsys)
     assert (code, out) == (2, "")
     assert err.splitlines()[-1] == last
+
+
+COUNT = "stepdates: error: argument -n/--count: "
+
+
+@pytest.mark.parametrize(
+    ("argv", "code", "out", "last"),
+    [
+        (
+            ["2026-01-01", "--count=--"],
+            2,
+            "",
+            COUNT + "not a whole number of at most 18 digits: '--'",
+        ),
+        (["2026-01-01", "--step=--"], 2, "", "stepdates: error: invalid step '--': use a unit"),
+        (["2026-01-01", "-n", "1", "--format=--"], 0, "--\n", None),
+        (["-f--", "-n", "1", "2026-01-01"], 0, "--\n", None),
+        (["-n", "--", "2", "2026-01-01"], 2, "", COUNT + "expected one argument"),
+        (["2026-01-01", "-1x"], 2, "", BAD_STOP + "'-1x'"),
+        (
+            ["-n", "-1x", "2026-01-01"],
+            2,
+            "",
+            COUNT + "not a whole number of at most 18 digits: '-1x'",
+        ),
+        (["2026-01-01", "-n", "1", "-f", "-1x"], 0, "-1x\n", None),
+        (["2026-01-01", "--", "-s", "week"], 2, "", BAD_STOP + "'-s'"),
+    ],
+    ids=[
+        "count of double dash",
+        "step of double dash",
+        "format of double dash",
+        "short format of double dash",
+        "option before double dash",
+        "number-like stop",
+        "number-like count",
+        "number-like format",
+        "step flag after double dash",
+    ],
+)
+def test_option_values_read_the_same_on_every_python(
+    argv: list[str], code: int, out: str, last: str | None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    got = _run(argv, capsys)
+    assert got[:2] == (code, out)
+    assert got[2].splitlines()[-1].startswith(last) if last else got[2] == ""
+
+
+TOKENS = ["2026-01-01", "--", "-x", "-5", "-1x", "-n", "-s", "-f", "x", "--count=--"]
+
+
+def test_a_rewritten_argument_never_shows_in_output(capsys: pytest.CaptureFixture[str]) -> None:
+    for argv in itertools.product(TOKENS, repeat=3):
+        _, out, err = _run(list(argv), capsys)
+        assert "\0" not in out + err and "\\x00" not in out + err, argv
 
 
 @pytest.mark.parametrize(

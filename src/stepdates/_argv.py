@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import re
 from collections.abc import Sequence
+from typing import Any
+
+# Python 3.14 reads any argument that starts like a negative number as a positional; earlier
+# versions only whole numbers and decimals. The newest rule is applied on every version.
+_NUMBER = re.compile(r"-\.?\d")
 
 
 class Escaped(str):
-    """An argument after ``--``: START or STOP whatever it looks like, kept as ``original``."""
+    """An argument argparse must read as a positional, kept as the caller wrote it."""
 
     original: str
 
@@ -18,17 +24,43 @@ class Escaped(str):
         return self
 
 
+class Mark(str):
+    """Stands for the first ``--``: an unknown option to argparse, dropped from the extras."""
+
+    def __new__(cls) -> Mark:
+        return super().__new__(cls, "--\0")  # not "--", which 3.10 and 3.11 treat apart
+
+
+class Value(argparse.Action):
+    """Stores an option's value; Python 3.10 and 3.11 hand ``[]`` for a value of ``--``."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        if values == []:  # they drop "--" from "--step=--"; read it as later versions do
+            try:
+                values = self.type("--") if callable(self.type) else "--"
+            except argparse.ArgumentTypeError as error:
+                raise argparse.ArgumentError(self, str(error)) from None
+        setattr(namespace, self.dest, values)
+
+
 def plain(arg: str) -> str:
     """``arg`` as the caller wrote it."""
     return arg.original if isinstance(arg, Escaped) else arg
 
 
 def prepare(argv: Sequence[str]) -> list[str]:
-    """``argv`` with each dash-led step glued to its flag and the first ``--`` resolved.
+    """``argv`` rewritten so that every supported Python reads it as 3.14 does.
 
-    argparse reads a step such as "-P1M" as an option, so it is glued to its flag. After the
-    first ``--`` every argument is START or STOP, as Python 3.12 and later read it; each is
-    wrapped so that 3.10 and 3.11, which read ``--`` otherwise, see a plain positional too.
+    A step such as "-P1M" is glued to its flag, which argparse would otherwise take for an
+    option. After the first ``--`` every argument is START or STOP: each is wrapped, and the
+    ``--`` itself becomes a :class:`Mark`, so that 3.10 and 3.11, which read ``--`` otherwise,
+    agree. An argument that starts like a negative number is wrapped as well.
     """
     prepared: list[str] = []
     rest = iter(argv)
@@ -37,10 +69,21 @@ def prepare(argv: Sequence[str]) -> list[str]:
             value = next(rest, None)
             prepared.append(arg if value is None else f"--step={value}")
         elif arg == "--":
+            prepared.append(Mark())
             prepared.extend(Escaped(after) for after in rest)
         else:
-            prepared.append(arg)
+            prepared.append(Escaped(arg) if _NUMBER.match(arg) else arg)
     return prepared
+
+
+def settle(args: argparse.Namespace, extras: list[str]) -> list[str]:
+    """Undo :func:`prepare` on the parsed ``args``: unwrap each wrapped option value, and
+    return the extras without the mark.
+    """
+    for name, value in vars(args).items():
+        if isinstance(value, Escaped):
+            setattr(args, name, value.original)
+    return [arg for arg in extras if not isinstance(arg, Mark)]
 
 
 def late_stop(extras: list[str]) -> tuple[str | None, list[str]]:
@@ -49,8 +92,7 @@ def late_stop(extras: list[str]) -> tuple[str | None, list[str]]:
     When an unknown option comes before STOP, 3.10 and 3.11 fill STOP with nothing and leave
     the real one among the extras; later versions take the first positional, and so does this.
     """
-    # A parser with no options decides, so a dash-led argument such as "-5" is read the way
-    # this Python's argparse read the rest of the command line.
+    # A parser with no options decides, so an argument is read the way argparse read the rest.
     probe = argparse.ArgumentParser(add_help=False)
     probe.add_argument("value", nargs="?")
     for at, arg in enumerate(extras):

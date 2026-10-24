@@ -7,18 +7,19 @@ import errno
 import os
 import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
 from gettext import gettext
-from typing import NoReturn
+from typing import NoReturn, TypeVar
 
 from stepdates import __version__
-from stepdates._argv import late_stop, plain, prepare
+from stepdates._argv import Value, late_stop, plain, prepare, settle
 from stepdates._quote import bound, listing, quote, scrub
 from stepdates._range import date_range
 from stepdates._step import MAX_DIGITS
 
 _COUNT = re.compile(rf"[+-]?[0-9]{{1,{MAX_DIGITS}}}")
+_T = TypeVar("_T")
 
 
 def _when(text: str) -> date:
@@ -36,6 +37,7 @@ def _when(text: str) -> date:
 
 
 def _count(text: str) -> int:
+    text = plain(text)
     if not _COUNT.fullmatch(text):
         raise argparse.ArgumentTypeError(
             f"not a whole number of at most {MAX_DIGITS} digits: {quote(text)}"
@@ -54,6 +56,13 @@ class _Parser(argparse.ArgumentParser):
         """The tool's own messages, whose values are already quoted."""
         super().error(bound(message))
 
+    def convert(self, action: argparse.Action, kind: Callable[[str], _T], text: str) -> _T:
+        """``text`` read as argparse reads the value of ``action``, with its error message."""
+        try:
+            return kind(text)
+        except argparse.ArgumentTypeError as error:
+            self.error(str(argparse.ArgumentError(action, str(error))))
+
 
 def _parser() -> _Parser:
     parser = _Parser(
@@ -65,9 +74,15 @@ def _parser() -> _Parser:
     parser.stop = parser.add_argument(
         "stop", type=_when, nargs="?", help="end value (excluded by default)"
     )
-    parser.add_argument("-n", "--count", type=_count, help="how many values, instead of STOP")
     parser.add_argument(
-        "-s", "--step", default="day", help='"day", "2 weeks", "-1 month", "P3M" (default: day)'
+        "-n", "--count", action=Value, type=_count, help="how many values, instead of STOP"
+    )
+    parser.add_argument(
+        "-s",
+        "--step",
+        action=Value,
+        default="day",
+        help='"day", "2 weeks", "-1 month", "P3M" (default: day)',
     )
     parser.add_argument("--inclusive", action="store_true", help="include STOP when reached")
     parser.add_argument(
@@ -76,7 +91,7 @@ def _parser() -> _Parser:
     parser.add_argument(
         "--end-of-month", action="store_true", help="keep a month-end START on month ends"
     )
-    parser.add_argument("-f", "--format", help="strftime format (default: ISO 8601)")
+    parser.add_argument("-f", "--format", action=Value, help="strftime format (default: ISO 8601)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
@@ -97,13 +112,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args, extras = parser.parse_known_intermixed_args(
         prepare(sys.argv[1:] if argv is None else argv)
     )
+    extras = settle(args, extras)
     if args.stop is None:
         stop, extras = late_stop(extras)
         if stop is not None:
-            try:
-                args.stop = _when(stop)
-            except argparse.ArgumentTypeError as error:
-                parser.error(str(argparse.ArgumentError(parser.stop, str(error))))
+            args.stop = parser.convert(parser.stop, _when, stop)
     if extras:  # listed here rather than by argparse, which joins them all whole
         parser.fail(gettext("unrecognized arguments: %s") % listing([plain(e) for e in extras]))
     if args.format:
