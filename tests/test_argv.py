@@ -44,7 +44,18 @@ def test_prepare_leaves_other_arguments_alone(arg: str) -> None:
 
 def test_plain_returns_the_text_as_written() -> None:
     assert plain(Escaped("-1x")) == "-1x"
+    assert plain(Escaped(" -1 ")) == " -1 "
+    assert plain(Escaped("")) == ""
     assert plain("x") == "x"
+
+
+def test_prepare_keeps_spaces_around_a_wrapped_argument() -> None:
+    prepared = prepare(["-1 ", "--", " 2026-01-01 ", ""])
+    assert [plain(arg) for arg in prepared if not isinstance(arg, Mark)] == [
+        "-1 ",
+        " 2026-01-01 ",
+        "",
+    ]
 
 
 def test_settle_unwraps_values_and_drops_the_mark() -> None:
@@ -90,6 +101,14 @@ def test_value_stores_what_it_is_given() -> None:
     assert namespace.v == "x"
 
 
+@pytest.mark.parametrize("kind", [None, str])
+def test_value_stores_an_empty_value_as_empty(kind: object) -> None:
+    parser, action = _value(kind)
+    namespace = argparse.Namespace()
+    action(parser, namespace, "")
+    assert namespace.v == "" and type(namespace.v) is str
+
+
 def test_value_puts_back_a_dropped_double_dash() -> None:
     parser, action = _value()
     namespace = argparse.Namespace()
@@ -130,4 +149,14 @@ def test_take_stop_reports_a_bad_stop_as_argparse_would(
     assert stop.value.code == 2
     assert capsys.readouterr().err.splitlines()[-1] == (
         "stepdates: error: argument stop: not an ISO 8601 date or datetime: '-x'"
+    )
+
+
+@pytest.mark.parametrize("unknown", ["--bogus", "-x"])
+def test_take_stop_reads_an_empty_stop(unknown: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as stop:
+        _parser().take_stop(argparse.Namespace(stop=None), [unknown, ""])
+    assert stop.value.code == 2
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        "stepdates: error: argument stop: not an ISO 8601 date or datetime: ''"
     )
