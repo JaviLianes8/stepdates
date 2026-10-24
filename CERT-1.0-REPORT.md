@@ -33,7 +33,7 @@ Progress:
 | 7 | Real ground truth | PASS: RFC 5545 and RFC 3339 fetched live, python-dateutil 3.0.0, .NET 10.0.12 `DateTime` output |
 | 8 | Real e2e from the wheel | PASS: wheel in a fresh venv, used from an empty folder with `-I`, CLI driven by subprocess; no PyPI release to upgrade from |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
-| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1), 335f2a4 (QA round 2), 9416dfb (QA round 3) and df4248d (QA round 4) |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1), 335f2a4 (QA round 2), 9416dfb (QA round 3), df4248d (QA round 4) and 4791a64 (QA round 5) |
 | 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, badge, GUIDE and CHANGELOG linked |
 | 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-23 |
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
@@ -41,8 +41,8 @@ Progress:
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
-| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction); round 4: lens e's survivor and 12 mutants of the argv rewriting killed on 3.13.2 |
-| 19 | Five independent QA lenses | rounds 1 to 4: every finding of lenses a, c, d and e fixed (see QA lenses); round 3 fixes confirmed in round 4 by lenses d and e; re-verification of round 4 pending |
+| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction); round 4: lens e's survivor and 12 mutants of the argv rewriting killed on 3.13.2; round 5: lens e's 4 survivors killed on 3.11.5 and 3.13.2 |
+| 19 | Five independent QA lenses | rounds 1 to 5: every finding of lenses a, c, d and e fixed (see QA lenses); round 3 fixes confirmed in round 4 by lenses d and e, round 4 fixes in round 5 by lens e; re-verification of round 5 pending |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -449,9 +449,38 @@ own: `ruff format --check .`, `ruff check .`, `mypy --strict src`, `mypy --stric
 and `pytest` (2148 passed, 23 skipped: this interpreter has no time zone database and the
 working tree no fetched RFC texts; the interpreter runs above have both) all exit 0.
 
+### Round 5 (reviewed at 9c974b7, fixed in 4791a64)
+
+Lens e confirmed S2 fixed and swept the argv rewriting with 38 probes: 31 killed (4 of them on
+3.10 and 3.11 only, where the code they touch does the work), 3 equivalent (0 differences over
+10,736 command lines on four Pythons) and 4 survivors that change behaviour. All four were
+gaps in the tests, not wrong behaviour: the command line already did what the new tests pin,
+so the CHANGELOG is unchanged. Each new test was checked by applying its mutant alone to a
+copy of `src` and running the argv and CLI test files, on CPython 3.11.5 and 3.13.2. No
+finding is disputed.
+
+| Finding | Resolution | Killed by (3.11.5 and 3.13.2) |
+| --- | --- | --- |
+| e/S2 recheck: fixed | nothing to do | |
+| e/N1: nothing pinned that a wrapped argument keeps its spaces; `self.original = original.strip()` survived | tests that `plain()` returns `" -1 "` and `""` as written and that `prepare()` keeps the spaces of every wrapped argument; command lines `-f "-1 "` (prints `-1 `), `-- 2026-01-01 " 2026-01-01" -n 2` (refused, quoting `' 2026-01-01'`), `-- 2026-01-01 "-1 "`, `2026-01-01 2026-01-03 "-1 "` and `-n "-1 "` with their exact output or error line | test_argv::test_plain_returns_the_text_as_written; test_cli_values::test_a_format_is_used_as_written[wrapped format] |
+| e/N2: nothing kept an empty option value apart from a dropped `--`; `if not values:` survived | a direct test that `Value` stores `""` as `""` (with and without a type); command lines `--format=` and `-f ""` print ISO dates | test_argv::test_value_stores_an_empty_value_as_empty[None]; test_cli_values::test_a_format_is_used_as_written[empty] |
+| e/N3: nothing pinned the error of an empty `--step`; `values or None` survived | command lines `--step=`, `-s ""` and `--step ""` give the exact `invalid step ''` line | test_argv::test_value_stores_an_empty_value_as_empty[None]; test_cli_values::test_an_empty_or_spaced_value_is_refused_as_written[empty step] |
+| e/N4: nothing pinned an empty STOP after an unknown option on 3.10 and 3.11; `if stop:` survived | `take_stop()` with `["--bogus", ""]` and `["-x", ""]` reports the STOP error on any Python; the command lines `2026-01-01 --bogus ""` and `2026-01-01 -x ""` were added to the cross-version cases | test_argv::test_take_stop_reads_an_empty_stop[--bogus]; on 3.11.5 also test_cli_parsing::test_unknown_options_and_double_dash_read_the_same_on_every_python[empty stop] |
+
+Interpreters at 4791a64: wheel and sdist built from a clean clone (`twine check --strict`
+passes both), the wheel installed in a fresh venv per interpreter, the sdist's suite run
+against it with the fetched RFC texts. CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and
+3.14.2 free-threaded gave 2202 passed and 1 skipped each (the opt-in e2e test), exit 0, and
+the 3 doctests pass on all six.
+
+Gates on this PC after the round (CPython 3.13.2, `STEPDATES_E2E=1`), each command on its
+own: `ruff format --check .`, `ruff check .`, `mypy --strict src`, `mypy --strict src tests`
+and `pytest` (2167 passed, 23 skipped: this interpreter has no time zone database and the
+working tree no fetched RFC texts) all exit 0.
+
 ## Disputed findings
 
-None in rounds 1 to 4.
+None in rounds 1 to 5.
 
 ## Independent review (item 16)
 
