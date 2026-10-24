@@ -9,12 +9,20 @@ import re
 import sys
 from collections.abc import Sequence
 from datetime import date, datetime
+from gettext import gettext
+from typing import NoReturn
 
 from stepdates import __version__
+from stepdates._argv import Value, late_stop, plain, prepare, settle
+from stepdates._quote import bound, listing, quote, scrub
 from stepdates._range import date_range
+from stepdates._step import MAX_DIGITS
+
+_COUNT = re.compile(rf"[+-]?[0-9]{{1,{MAX_DIGITS}}}")
 
 
 def _when(text: str) -> date:
+    text = plain(text)
     try:
         return date.fromisoformat(text)
     except ValueError:
@@ -22,39 +30,62 @@ def _when(text: str) -> date:
     try:
         return datetime.fromisoformat(text)
     except ValueError:
-        raise argparse.ArgumentTypeError(f"not an ISO 8601 date or datetime: {text!r}") from None
+        raise argparse.ArgumentTypeError(
+            f"not an ISO 8601 date or datetime: {quote(text)}"
+        ) from None
 
 
 def _count(text: str) -> int:
-    if not re.fullmatch(r"[+-]?[0-9]+", text):
-        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}")
+    text = plain(text)
+    if not _COUNT.fullmatch(text):
+        raise argparse.ArgumentTypeError(
+            f"not a whole number of at most {MAX_DIGITS} digits: {quote(text)}"
+        )
     return int(text)
 
 
-def _join_negative_steps(argv: Sequence[str]) -> list[str]:
-    # argparse reads "-P1M" as an option; glue a dash-led step value to its flag.
-    joined: list[str] = []
-    rest = iter(argv)
-    for arg in rest:
-        if arg in ("-s", "--step"):
-            value = next(rest, None)
-            joined.append(arg if value is None else f"--step={value}")
-        else:
-            joined.append(arg)
-    return joined
+class _Parser(argparse.ArgumentParser):
+    stop: argparse.Action
+
+    def error(self, message: str) -> NoReturn:
+        """argparse's own messages, which may echo an argument whole; scrub bounds them."""
+        super().error(scrub(message))
+
+    def fail(self, message: str) -> NoReturn:
+        """The tool's own messages, whose values are already quoted."""
+        super().error(bound(message))
+
+    def take_stop(self, args: argparse.Namespace, extras: list[str]) -> list[str]:
+        """Fill a missing STOP from ``extras`` as Python 3.12 and later do; returns the rest."""
+        if args.stop is None:
+            stop, extras = late_stop(extras)
+            if stop is not None:
+                try:
+                    args.stop = _when(stop)
+                except argparse.ArgumentTypeError as error:
+                    self.error(str(argparse.ArgumentError(self.stop, str(error))))
+        return extras
 
 
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+def _parser() -> _Parser:
+    parser = _Parser(
         prog="stepdates",
         description="Print dates from START by a calendar step, one per line.",
         epilog='Example: stepdates 2026-01-31 --count 3 --step "1 month"',
     )
     parser.add_argument("start", type=_when, help="first value, YYYY-MM-DD or a datetime")
-    parser.add_argument("stop", type=_when, nargs="?", help="end value (excluded by default)")
-    parser.add_argument("-n", "--count", type=_count, help="how many values, instead of STOP")
+    parser.stop = parser.add_argument(
+        "stop", type=_when, nargs="?", help="end value (excluded by default)"
+    )
     parser.add_argument(
-        "-s", "--step", default="day", help='"day", "2 weeks", "-1 month", "P3M" (default: day)'
+        "-n", "--count", action=Value, type=_count, help="how many values, instead of STOP"
+    )
+    parser.add_argument(
+        "-s",
+        "--step",
+        action=Value,
+        default="day",
+        help='"day", "2 weeks", "-1 month", "P3M" (default: day)',
     )
     parser.add_argument("--inclusive", action="store_true", help="include STOP when reached")
     parser.add_argument(
@@ -63,20 +94,36 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--end-of-month", action="store_true", help="keep a month-end START on month ends"
     )
-    parser.add_argument("-f", "--format", help="strftime format (default: ISO 8601)")
+    parser.add_argument("-f", "--format", action=Value, help="strftime format (default: ISO 8601)")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
 
 
+def _output_encoding() -> tuple[str, str]:
+    stdout = sys.stdout
+    return getattr(stdout, "encoding", None) or "utf-8", getattr(stdout, "errors", None) or "strict"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point for ``stepdates`` and ``python -m stepdates``; returns the exit code."""
+    if sys.stdout is None:  # started with standard output closed; even --help has nowhere to go
+        print("stepdates: error: there is no standard output to write to", file=sys.stderr)
+        return 2
     parser = _parser()
-    args = parser.parse_args(_join_negative_steps(sys.argv[1:] if argv is None else argv))
+    # Intermixed, so that STOP may follow an option on every Python: 3.10 and 3.11 otherwise
+    # fill the optional positional early and refuse a later STOP as unrecognized.
+    args, extras = parser.parse_known_intermixed_args(
+        prepare(sys.argv[1:] if argv is None else argv)
+    )
+    extras = parser.take_stop(args, settle(args, extras))
+    if extras:  # listed here rather than by argparse, which joins them all whole
+        parser.fail(gettext("unrecognized arguments: %s") % listing([plain(e) for e in extras]))
     if args.format:
-        try:
-            args.start.strftime(args.format)
+        try:  # UnicodeEncodeError is a ValueError: the output must be able to hold the text
+            sample = args.start.strftime(args.format)
+            sample.encode(*_output_encoding())
         except ValueError as error:
-            parser.error(f"invalid --format {args.format!r}: {error}")
+            parser.fail(f"invalid --format {quote(args.format)}: {error}")
     try:
         values = date_range(
             args.start,
@@ -88,12 +135,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             end_of_month=args.end_of_month,
         )
     except (TypeError, ValueError) as error:
-        parser.error(str(error))
+        parser.fail(str(error))
     try:
         for value in values:
             text = value.strftime(args.format) if args.format else value.isoformat()
             sys.stdout.write(text + "\n")
         sys.stdout.flush()
+    except UnicodeEncodeError as error:
+        # A value the --format check could not foresee, such as a later zone name.
+        print(f"stepdates: error: the output cannot hold {quote(text)}: {error}", file=sys.stderr)
+        return 2
     except OverflowError as error:
         sys.stdout.flush()
         print(f"stepdates: {error}", file=sys.stderr)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone, tzinfo
 
 import pytest
 
@@ -116,6 +116,52 @@ def test_date_and_datetime_cannot_mix() -> None:
 def test_naive_and_aware_cannot_mix() -> None:
     with pytest.raises(TypeError, match="naive"):
         date_range(datetime(2026, 1, 1), datetime(2026, 2, 1, tzinfo=timezone.utc))
+
+
+class _NoOffset(tzinfo):
+    """A tzinfo whose utcoffset is None: Python counts such a datetime as naive."""
+
+    def utcoffset(self, dt: datetime | None) -> None:
+        return None
+
+    def dst(self, dt: datetime | None) -> None:
+        return None
+
+    def tzname(self, dt: datetime | None) -> str:
+        return "none"
+
+
+def test_a_tzinfo_without_an_offset_is_naive() -> None:
+    start = datetime(2026, 1, 1, tzinfo=_NoOffset())
+    assert list(date_range(start, datetime(2026, 1, 3))) == [start, start.replace(day=2)]
+    with pytest.raises(TypeError, match="naive"):
+        date_range(start, datetime(2026, 1, 3, tzinfo=timezone.utc))
+
+
+def test_an_aware_value_near_year_9999_is_not_dropped_by_skip() -> None:
+    # 23:00 at UTC-5 on 31 December 9999 is in year 10000 as UTC, which datetime refuses.
+    zone = timezone(timedelta(hours=-5))
+    start = datetime(9999, 12, 29, 23, tzinfo=zone)
+    assert list(date_range(start, count=3, invalid="skip")) == [
+        start,
+        start.replace(day=30),
+        start.replace(day=31),
+    ]
+    back = datetime(1, 1, 3, 0, 30, tzinfo=timezone(timedelta(hours=9)))
+    assert list(date_range(back, count=3, step="-1 day", invalid="skip")) == [
+        back,
+        back.replace(day=2),
+        back.replace(day=1),
+    ]
+
+
+def test_an_aware_stop_near_year_9999_compares_by_wall_time() -> None:
+    zone = timezone(timedelta(hours=-5))
+    start = datetime(9999, 12, 31, 20, tzinfo=zone)
+    assert list(date_range(start, datetime(9999, 12, 31, 22, tzinfo=zone), step="day")) == [start]
+    assert list(date_range(start, start, inclusive=True)) == [start]
+    first = datetime(1, 1, 1, 1, tzinfo=timezone(timedelta(hours=9)))
+    assert list(date_range(first.replace(day=2), first, step="-1 day")) == [first.replace(day=2)]
 
 
 def test_naive_datetimes_are_never_skipped() -> None:

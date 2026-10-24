@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+MODULES = sorted(p.name for p in (ROOT / "src" / "stepdates").glob("*.py"))
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("STEPDATES_E2E") != "1", reason="set STEPDATES_E2E=1 to build"
@@ -30,6 +31,7 @@ assert "site-packages" in s.__file__, s.__file__
 assert importlib.metadata.version("stepdates") == s.__version__
 assert importlib.resources.files("stepdates").joinpath("py.typed").is_file()
 assert sorted(s.__all__) == ["InvalidPolicy", "date_range", "shift"]
+assert s.__version__ == "1.0.0"
 
 d = date
 assert list(s.date_range(d(2026, 1, 31), count=3, step="month")) == [
@@ -67,7 +69,9 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
     (wheel,) = dist.glob("stepdates-*.whl")
     names = zipfile.ZipFile(wheel).namelist()
     assert not [name for name in names if "vectors" in name or name.startswith("tests/")]
-    assert {"stepdates/py.typed", "stepdates/__main__.py", "stepdates/_cli.py"} <= set(names)
+    package = {name for name in names if name.startswith("stepdates/")}
+    assert package == {f"stepdates/{n}" for n in MODULES} | {"stepdates/py.typed"}
+    assert any(name.endswith(".dist-info/licenses/LICENSE") for name in names)
 
     _run(sys.executable, "-m", "build", "--sdist", "--outdir", dist, ROOT)
     (sdist,) = dist.glob("stepdates-*.tar.gz")
@@ -75,6 +79,10 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
         members = archive.getnames()
     data = [name for name in members if "/tests/vectors/" in name]
     assert data == [name for name in data if name.endswith("/MANIFEST.txt")]
+    top = {name.split("/", 1)[1] for name in members if name.count("/") == 1}
+    assert top == {"README.md", "GUIDE.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE",
+                   "PKG-INFO", "pyproject.toml", "requirements-dev.txt", ".gitignore"}  # fmt: skip
+    assert not [name for name in members if "__pycache__" in name or name.endswith(".pyc")]
 
     env_dir = tmp_path / "venv"
     venv.create(env_dir, with_pip=True)
@@ -93,6 +101,24 @@ def test_installed_wheel_end_to_end(tmp_path: Path) -> None:
     out = _run(python, "-I", "-m", "stepdates", "2026-01-31", "-n", "2", "--skip-invalid",
                "-s", "month", cwd=work).decode()  # fmt: skip
     assert out.split() == ["2026-01-31", "2026-03-31"]
+    assert _run(script, "--version", cwd=work).decode().split() == ["stepdates", "1.0.0"]
+    back = _run(script, "2026-01-05", "2026-01-01", "-s", "-P2D", "--inclusive", cwd=work)
+    assert back.decode().split() == ["2026-01-05", "2026-01-03", "2026-01-01"]
     bad = subprocess.run([str(script), "2026-01-01"], cwd=work, capture_output=True, check=False)
     assert bad.returncode == 2
     assert b"exactly one of stop or count" in bad.stderr
+    for tool in ([script], [python, "-I", "-m", "stepdates"]):
+        # A count past year 9999 exits 1 after the values that fit, stderr merged in order.
+        past = subprocess.run(
+            [*map(str, tool), "9999-12-30", "-n", "5"],
+            cwd=work,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        assert past.returncode == 1
+        assert past.stdout.decode().splitlines() == [
+            "9999-12-30",
+            "9999-12-31",
+            "stepdates: the range leaves the supported years 1 to 9999 after 2 values",
+        ]

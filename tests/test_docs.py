@@ -1,4 +1,4 @@
-"""The README examples run and print what they say; metadata agrees with the code."""
+"""The README and GUIDE examples run and print what they say; metadata agrees with the code."""
 
 from __future__ import annotations
 
@@ -19,26 +19,33 @@ def _readme() -> str:
     return (ROOT / "README.md").read_text(encoding="utf-8")
 
 
-def _blocks() -> list[str]:
-    return re.findall(r"```python\n(.*?)```", _readme(), flags=re.DOTALL)
+def _blocks(name: str) -> list[str]:
+    text = (ROOT / name).read_text(encoding="utf-8")
+    return re.findall(r"```python\n(.*?)```", text, flags=re.DOTALL)
 
 
-def test_the_readme_has_its_three_examples() -> None:
-    assert len(_blocks()) == 3
+EXAMPLES = [("README.md", 3), ("GUIDE.md", 2)]
 
 
-@pytest.mark.parametrize("index", range(3))
+@pytest.mark.parametrize(("name", "expected"), EXAMPLES)
+def test_the_documents_have_their_examples(name: str, expected: int) -> None:
+    assert len(_blocks(name)) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "index"), [(name, index) for name, count in EXAMPLES for index in range(count)]
+)
 def test_each_example_prints_what_its_comments_say(
-    index: int, capsys: pytest.CaptureFixture[str]
+    name: str, index: int, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    block = _blocks()[index]
+    block = _blocks(name)[index]
     if "ZoneInfo" in block:
         zoneinfo = pytest.importorskip("zoneinfo")
         try:
             zoneinfo.ZoneInfo("America/New_York")
         except zoneinfo.ZoneInfoNotFoundError:  # pragma: no cover
             pytest.skip("no time zone database")
-    exec(compile(block, "README.md", "exec"), {"__name__": "readme"})
+    exec(compile(block, name, "exec"), {"__name__": "docs"})
     lines = block.splitlines()
     # A comment right under a line of code is the output of that code.
     results = [
@@ -49,6 +56,31 @@ def test_each_example_prints_what_its_comments_say(
     printed = capsys.readouterr().out.splitlines()
     assert printed == results
     assert len(printed) >= 2
+
+
+@pytest.mark.parametrize("name", ["README.md", "GUIDE.md"])
+def test_the_zone_examples_say_they_need_a_time_zone_database(name: str) -> None:
+    (block,) = [block for block in _blocks(name) if "ZoneInfo" in block]
+    text = (ROOT / name).read_text(encoding="utf-8")
+    before = text[: text.index(block)]
+    assert "pip install tzdata" in before[before.rindex("\n## ") :]
+
+
+def test_readme_links_are_absolute_and_reach_the_guide_and_changelog() -> None:
+    links = re.findall(r"\]\(([^)]+)\)", _readme())
+    assert links and all(link.startswith("https://") for link in links), links
+    base = "https://github.com/JaviLianes8/stepdates/blob/main/"
+    for target in ("GUIDE.md", "CHANGELOG.md", "LICENSE"):
+        assert base + target in links, target
+        assert (ROOT / target).is_file()
+
+
+def test_readme_carries_the_certified_badge() -> None:
+    assert _readme().startswith(
+        "# stepdates\n\n[![Lianes8 Certified]"
+        "(https://lianes8studio.com/certified/lianes8-certified-badge.svg)]"
+        "(https://lianes8studio.com/certified)\n"
+    )
 
 
 def test_the_command_line_examples_match_the_tool(capsys: pytest.CaptureFixture[str]) -> None:
@@ -63,9 +95,11 @@ def test_the_command_line_examples_match_the_tool(capsys: pytest.CaptureFixture[
     assert len(transcript) == 8
 
 
-def test_every_public_name_appears_in_the_readme() -> None:
+def test_every_public_name_appears_in_the_readme_and_guide() -> None:
+    guide = (ROOT / "GUIDE.md").read_text(encoding="utf-8")
     for name in stepdates.__all__:
         assert f"`{name}" in _readme(), name
+        assert f"`{name}" in guide, name
 
 
 def test_version_matches_pyproject() -> None:
@@ -96,9 +130,15 @@ def test_no_em_dash_in_any_shipped_text() -> None:
         assert chr(0x2014) not in path.read_text(encoding="utf-8"), path
 
 
+# Records of the release work, kept in the repository but outside the sdist (see
+# test_e2e_wheel); they grow with every review round, so the file size rule does not bind them.
+RECORDS = {"CERT-1.0-REPORT.md", "IMPROVEMENTS-round.md"}
+
+
 def test_every_source_file_stays_under_two_hundred_lines() -> None:
     for path in _shipped():
-        assert len(path.read_text(encoding="utf-8").splitlines()) <= 200, path
+        if path.name not in RECORDS:
+            assert len(path.read_text(encoding="utf-8").splitlines()) <= 200, path
 
 
 def test_sources_are_ascii() -> None:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stepdates"
-version = "0.2.0"
+version = "1.0.0"
 description = "A range() for dates: iterate from start to stop by calendar day, week, month or year"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Javier Lianes", email = "javier@lianes8studio.com" }]
 keywords = ["date", "range", "calendar", "month", "recurrence", "rfc5545", "iso8601"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -24,23 +24,48 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
     "Typing :: Typed",
 ]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["ruff", "mypy", "pytest", "build", "twine", "python-dateutil", "tzdata"]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-timeout",
+    "build",
+    "twine",
+    "python-dateutil",
+    "tzdata",
+]
 
 [project.scripts]
 stepdates = "stepdates._cli:main"
 
 [project.urls]
 Homepage = "https://lianes8studio.com"
-Repository = "https://github.com/JaviLianes8/stepdates"
+Source = "https://github.com/JaviLianes8/stepdates"
 Issues = "https://github.com/JaviLianes8/stepdates/issues"
 Changelog = "https://github.com/JaviLianes8/stepdates/blob/main/CHANGELOG.md"
 LinkedIn = "https://www.linkedin.com/in/jlianes/"
 Funding = "https://buymeacoffee.com/jlianesglrs"
+
+[tool.hatch.build.targets.sdist]
+# An explicit list, so local folders (venvs, scratch, fetched RFC texts) never ship.
+include = [
+    "/src",
+    "/tests",
+    "/scripts",
+    "/README.md",
+    "/GUIDE.md",
+    "/CHANGELOG.md",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/requirements-dev.txt",
+]
+exclude = ["/tests/vectors/rfc/*.txt", "!/tests/vectors/rfc/MANIFEST.txt", "__pycache__"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stepdates"]
@@ -58,6 +83,7 @@ strict = true
 mypy_path = "src"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src", "tests"]
 pythonpath = ["src"]
-addopts = "-q"
+addopts = "-q --doctest-modules"
+timeout = 300

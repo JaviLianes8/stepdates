@@ -7,10 +7,20 @@ from datetime import date, timedelta
 from typing import Literal
 
 from stepdates._calendar import D, exists, instant, term
+from stepdates._quote import quote
 from stepdates._step import Step, parse_step
 from stepdates._validate import check_end_of_month, check_flags, check_start, check_stop
 
 InvalidPolicy = Literal["clamp", "skip"]
+"""The type of the ``invalid`` argument of :func:`date_range`: ``"clamp"`` or ``"skip"``.
+
+>>> from datetime import date
+>>> policy: InvalidPolicy = "clamp"
+>>> [d.day for d in date_range(date(2026, 1, 31), count=2, step="month", invalid=policy)]
+[31, 28]
+>>> InvalidPolicy.__args__
+('clamp', 'skip')
+"""
 _POLICIES = ("clamp", "skip")
 
 
@@ -41,6 +51,28 @@ def date_range(
     January plus one month to 28 February, ``"skip"`` drops it and does not count it (the
     RFC 5545 recurrence rule, which also drops wall times inside a DST gap).
     ``end_of_month`` keeps a month-end ``start`` on the last day of every month.
+
+    Arguments are checked when the function is called; the values are produced lazily.
+
+    Raises:
+        TypeError: ``start`` or ``stop`` is not a date, they mix a ``date`` with a
+            ``datetime`` or naive with aware, ``step`` is neither a ``str`` nor a
+            ``timedelta``, ``count`` is not an ``int``, ``invalid`` is not a ``str``, or
+            ``inclusive`` or ``end_of_month`` is not a ``bool``.
+        ValueError: both or neither of ``stop`` and ``count``, a negative ``count``,
+            ``inclusive`` with ``count``, a step that cannot be read or is zero, an
+            ``invalid`` other than ``"clamp"`` or ``"skip"``, or ``end_of_month`` without a
+            month-end ``start`` and a month, quarter or year step.
+        OverflowError: during iteration, when ``count`` values do not fit in years 1 to
+            9999.
+
+    >>> from datetime import date
+    >>> [str(d) for d in date_range(date(2026, 1, 31), count=3, step="month")]
+    ['2026-01-31', '2026-02-28', '2026-03-31']
+    >>> [str(d) for d in date_range(date(2026, 1, 31), count=3, step="P1M", invalid="skip")]
+    ['2026-01-31', '2026-03-31', '2026-05-31']
+    >>> [str(d) for d in date_range(date(2026, 1, 5), date(2026, 1, 1), step="-2 days")]
+    ['2026-01-05', '2026-01-03']
     """
     check_start(start)
     parsed = parse_step(step)
@@ -56,8 +88,10 @@ def date_range(
     if stop is not None:
         check_stop(start, stop)
     check_flags(inclusive=inclusive, end_of_month=end_of_month)
+    if not isinstance(invalid, str):
+        raise TypeError(f"invalid must be a str, not {type(invalid).__name__}")
     if invalid not in _POLICIES:
-        raise ValueError(f"invalid must be one of {_POLICIES}, not {invalid!r}")
+        raise ValueError(f"invalid must be one of {_POLICIES}, not {quote(invalid)}")
     check_end_of_month(start, parsed, end_of_month)
     return _generate(start, stop, parsed, count, inclusive, invalid == "skip", end_of_month)
 
@@ -65,14 +99,28 @@ def date_range(
 def shift(value: D, step: str | timedelta, *, end_of_month: bool = False) -> D:
     """Move ``value`` by one ``step``, clamping to the last day of a shorter month.
 
-    ``shift(date(2026, 1, 31), "1 month")`` is 28 February 2026. ``end_of_month`` moves a
-    month end to the last day of the target month. Raises ``OverflowError`` outside years
-    1 to 9999.
+    ``step`` reads as in :func:`date_range`. ``end_of_month`` moves a month end to the
+    last day of the target month. A ``datetime`` keeps its time and ``tzinfo``.
+
+    Raises:
+        TypeError: ``value`` is not a date, ``step`` is neither a ``str`` nor a
+            ``timedelta``, or ``end_of_month`` is not a ``bool``.
+        ValueError: a step that cannot be read or is zero, or ``end_of_month`` without a
+            month-end ``value`` and a month, quarter or year step.
+        OverflowError: the result falls outside years 1 to 9999.
+
+    >>> from datetime import date
+    >>> shift(date(2026, 1, 31), "1 month")
+    datetime.date(2026, 2, 28)
+    >>> shift(date(2026, 2, 28), "month", end_of_month=True)
+    datetime.date(2026, 3, 31)
+    >>> shift(date(2024, 2, 29), "-P1Y")
+    datetime.date(2023, 2, 28)
     """
-    check_start(value)
+    check_start(value, "value")
     parsed = parse_step(step)
     check_flags(end_of_month=end_of_month)
-    check_end_of_month(value, parsed, end_of_month)
+    check_end_of_month(value, parsed, end_of_month, "value")
     return term(value, parsed, 1, end_of_month)[0]
 
 
@@ -93,7 +141,8 @@ def _generate(
             if count is None:
                 return
             raise OverflowError(
-                f"the range leaves the supported years 1 to 9999 after {produced} values"
+                "the range leaves the supported years 1 to 9999 after "
+                f"{produced} value{'' if produced == 1 else 's'}"
             ) from None
         # A clamped term sits in the same month as the dropped one, so it is a safe bound.
         if stop is not None and _beyond(value, stop, step.forward, inclusive):

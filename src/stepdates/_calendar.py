@@ -23,7 +23,9 @@ def exists(value: date) -> bool:
         return True
     try:
         back = value.astimezone(timezone.utc).astimezone(value.tzinfo)
-    except OverflowError:
+    except (OverflowError, ValueError, NotImplementedError):
+        # Near years 1 and 9999, or a tzinfo whose dst() is None or missing, which the default
+        # fromutc() refuses: such a zone has no gap that can be found, so the wall time stands.
         return True
     return back.replace(tzinfo=None, fold=0) == value.replace(tzinfo=None, fold=0)
 
