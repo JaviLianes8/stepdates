@@ -44,10 +44,15 @@ change only in a new major version. The GUIDE describes all of it.
 - The command line started without a standard output (closed with `>&-`) exits with status 2
   and a one-line message, whatever its arguments, `--help` and `--version` included. Before,
   it stopped with a traceback and status 1.
-- The command line reads options and START and STOP in any order on every supported Python.
-  Before, Python 3.10 and 3.11 refused a STOP that came after an option
-  (`stepdates 2026-01-01 --inclusive 2026-01-03`) as an unrecognized argument, while 3.12
-  and later accepted it.
+- The command line reads options and START and STOP in any order on every supported Python,
+  with the same error messages. Before, Python 3.10 and 3.11 refused a STOP that came after an
+  option (`stepdates 2026-01-01 --inclusive 2026-01-03`) as an unrecognized argument, while
+  3.12 and later accepted it, and after an unknown option they listed STOP among the
+  unrecognized arguments (`stepdates 2026-01-01 --inclsive 2026-01-03`).
+- In the command line every argument after `--` is START or STOP, on every supported Python.
+  Before, Python 3.10 and 3.11 still read an option there
+  (`stepdates -- 2026-01-01 2026-01-03 --inclusive` printed three dates) and refused a
+  dash-led argument there as a missing START.
 
 ### Fixed
 

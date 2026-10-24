@@ -120,7 +120,9 @@ stepdates START [STOP] [-n COUNT] [-s STEP] [--inclusive] [--skip-invalid]
 The options map to the arguments of `date_range`; `python -m stepdates` is the same tool. START
 and STOP are read by `date.fromisoformat`, then `datetime.fromisoformat`. Output is one ISO 8601
 value per line, or a `strftime` pattern with `--format`. A dash-led step works without `=`:
-`-s -P1M`. Options may come before, between or after START and STOP. Exit status: 0 on success
+`-s -P1M`. Options, known or not, may come before, between or after START and STOP, and every
+argument after `--` is START or STOP; this reads the same on every supported Python, error
+messages included. Exit status: 0 on success
 (also when the reader closes the pipe early), 1 when a count runs past year 9999 (after printing
 the values that fit), 2 for bad input, which includes a `--format` whose output the encoding of
 standard output cannot hold, and when there is no standard output at all (whatever the

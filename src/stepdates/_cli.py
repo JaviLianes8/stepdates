@@ -13,6 +13,7 @@ from gettext import gettext
 from typing import NoReturn
 
 from stepdates import __version__
+from stepdates._argv import late_stop, plain, prepare
 from stepdates._quote import bound, listing, quote, scrub
 from stepdates._range import date_range
 from stepdates._step import MAX_DIGITS
@@ -21,6 +22,7 @@ _COUNT = re.compile(rf"[+-]?[0-9]{{1,{MAX_DIGITS}}}")
 
 
 def _when(text: str) -> date:
+    text = plain(text)
     try:
         return date.fromisoformat(text)
     except ValueError:
@@ -41,20 +43,9 @@ def _count(text: str) -> int:
     return int(text)
 
 
-def _join_negative_steps(argv: Sequence[str]) -> list[str]:
-    # argparse reads "-P1M" as an option; glue a dash-led step value to its flag.
-    joined: list[str] = []
-    rest = iter(argv)
-    for arg in rest:
-        if arg in ("-s", "--step"):
-            value = next(rest, None)
-            joined.append(arg if value is None else f"--step={value}")
-        else:
-            joined.append(arg)
-    return joined
-
-
 class _Parser(argparse.ArgumentParser):
+    stop: argparse.Action
+
     def error(self, message: str) -> NoReturn:
         """argparse's own messages, which may echo an argument whole; scrub bounds them."""
         super().error(scrub(message))
@@ -71,7 +62,9 @@ def _parser() -> _Parser:
         epilog='Example: stepdates 2026-01-31 --count 3 --step "1 month"',
     )
     parser.add_argument("start", type=_when, help="first value, YYYY-MM-DD or a datetime")
-    parser.add_argument("stop", type=_when, nargs="?", help="end value (excluded by default)")
+    parser.stop = parser.add_argument(
+        "stop", type=_when, nargs="?", help="end value (excluded by default)"
+    )
     parser.add_argument("-n", "--count", type=_count, help="how many values, instead of STOP")
     parser.add_argument(
         "-s", "--step", default="day", help='"day", "2 weeks", "-1 month", "P3M" (default: day)'
@@ -102,10 +95,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     # Intermixed, so that STOP may follow an option on every Python: 3.10 and 3.11 otherwise
     # fill the optional positional early and refuse a later STOP as unrecognized.
     args, extras = parser.parse_known_intermixed_args(
-        _join_negative_steps(sys.argv[1:] if argv is None else argv)
+        prepare(sys.argv[1:] if argv is None else argv)
     )
+    if args.stop is None:
+        stop, extras = late_stop(extras)
+        if stop is not None:
+            try:
+                args.stop = _when(stop)
+            except argparse.ArgumentTypeError as error:
+                parser.error(str(argparse.ArgumentError(parser.stop, str(error))))
     if extras:  # listed here rather than by argparse, which joins them all whole
-        parser.fail(gettext("unrecognized arguments: %s") % listing(extras))
+        parser.fail(gettext("unrecognized arguments: %s") % listing([plain(e) for e in extras]))
     if args.format:
         try:  # UnicodeEncodeError is a ValueError: the output must be able to hold the text
             sample = args.start.strftime(args.format)

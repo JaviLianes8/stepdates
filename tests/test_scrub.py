@@ -46,6 +46,45 @@ def test_a_str_subclass_is_refused_at_once(call: Callable[[], object]) -> None:
         call()
 
 
+class Shown(str):
+    """A subclass whose own text is something the caller never passed."""
+
+    def __str__(self) -> str:
+        return "z" * 1_000_000
+
+
+class Broken(str):
+    """A subclass that cannot be turned into text its own way."""
+
+    def __str__(self) -> str:
+        raise RuntimeError("no text")
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.parametrize("kind", [Shown, Broken], ids=["other text", "raises"])
+def test_quote_ignores_the_str_of_a_subclass(kind: type[str]) -> None:
+    assert quote(kind("nope")) == "'nope'"
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.parametrize("kind", [Shown, Broken], ids=["other text", "raises"])
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda v: date_range(date(2026, 1, 1), count=1, step=v),
+        lambda v: date_range(date(2026, 1, 1), count=1, invalid=v),
+        lambda v: shift(date(2026, 1, 1), step=v),
+    ],
+    ids=["date_range step", "date_range invalid", "shift step"],
+)
+def test_errors_quote_a_subclass_as_its_plain_text(
+    call: Callable[[str], object], kind: type[str]
+) -> None:
+    with pytest.raises(ValueError, match="'nope'") as caught:
+        call(kind("nope"))
+    assert "zzz" not in str(caught.value)
+
+
 SHAPES: dict[str, Callable[[int], str]] = {
     "escaped double quotes": lambda n: '"' + '\\"' * n,
     "escaped single quotes": lambda n: "'\\" * n,
