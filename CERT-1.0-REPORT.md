@@ -33,7 +33,7 @@ Progress:
 | 7 | Real ground truth | PASS: RFC 5545 and RFC 3339 fetched live, python-dateutil 3.0.0, .NET 10.0.12 `DateTime` output |
 | 8 | Real e2e from the wheel | PASS: wheel in a fresh venv, used from an empty folder with `-I`, CLI driven by subprocess; no PyPI release to upgrade from |
 | 9 | Seeded fuzz, no crash, hang or blowup | PASS |
-| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1), 335f2a4 (QA round 2) and 9416dfb (QA round 3) |
+| 10 | Supported Pythons | PASS: CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2, 3.14.2t; 3.13t not installed here; 3.9 refused by pip; suite run again on all six at b6c505c (QA round 1), 335f2a4 (QA round 2), 9416dfb (QA round 3) and df4248d (QA round 4) |
 | 11 | README and `twine check` | PASS: `twine check --strict`, absolute links, badge, GUIDE and CHANGELOG linked |
 | 12 | Dated CHANGELOG section | PASS: 1.0.0, 2026-10-23 |
 | 13 | pyproject 1.0.0, Production/Stable | PASS |
@@ -41,8 +41,8 @@ Progress:
 | 15 | Gates each exit 0 | PASS: see Gates |
 | 16 | Independent reviewer | pending |
 | 17 | PR and trace guard | PR #3 from `release/1.0.0`, trace guard CLEAN; merge and publish left to the maintainer |
-| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction) |
-| 19 | Five independent QA lenses | rounds 1 to 3: every finding of lenses a, c, d and e fixed (see QA lenses), round 2 fixes confirmed in round 3; re-verification of round 3 pending |
+| 18 | Contracts bite (mutations) | PASS: author 37 mutants, 36 killed, 1 equivalent; 4 later survivors closed by tests at c0c97d4; the 8 survivors of QA lens e and 10 mutants of the round 1 fixes all killed at b6c505c; round 2: 19 mutants, 18 killed, 1 equivalent; round 3: lens e's 5 survivors and 8 fix mutants killed (one on 3.10 and 3.11 only, by construction); round 4: lens e's survivor and 12 mutants of the argv rewriting killed on 3.13.2 |
+| 19 | Five independent QA lenses | rounds 1 to 4: every finding of lenses a, c, d and e fixed (see QA lenses); round 3 fixes confirmed in round 4 by lenses d and e; re-verification of round 4 pending |
 
 ## Baseline on 0.2.0 (before any change)
 
@@ -398,9 +398,60 @@ Gates on this PC after the round (CPython 3.13.2, RFC texts fetched, `STEPDATES_
 command on its own: `ruff format --check .`, `ruff check .`, `mypy --strict src`,
 `mypy --strict src tests` and `pytest` (2125 passed) all exit 0.
 
+### Round 4 (reviewed at a77c968, fixed in 0d558a0, 3cc58b3 and df4248d)
+
+Lens d confirmed the round 3 fixes N2 and N3 and that F1, F2 and N1 still hold, on seven
+venvs; lens e confirmed E1 to E5 and killed 24 of its 25 new mutants. Two findings remained,
+both fixed. Each behaviour fix was first written as a test that failed on a77c968 (on 3.11.5,
+and on 3.13.2 for the parts that differed there too) and passes now. No finding is disputed.
+
+| Finding | Resolution | Test |
+| --- | --- | --- |
+| d/N4: with an unknown option before STOP, Python 3.10 and 3.11 listed STOP among the unrecognized arguments (`2026-01-01 --inclsive 2026-01-03`), 3.12 and later only the option, against the CHANGELOG and GUIDE | the command line now reads the same on every supported Python, error messages included. When STOP is still empty after parsing, the first positional among the extras is taken as STOP and read like one (`argument stop: ...` when it is not a date), as 3.12 and later do; a parser with no options decides what is positional, so the answer follows that Python's own rules. Comparing every Python against 3.13.2 over all short command lines also showed that 3.10 and 3.11 read `--` otherwise (an option after it still counted; a dash-led argument after it was a missing START), dropped `--` given as an option value (`--step=--` failed with "not list", `--format=--` printed ISO dates), and that 3.14 reads an argument starting like a negative number (`-1x`, `-1_0`) as a value where 3.10 to 3.13 take it for an option. The argv is now rewritten before parsing (`_argv.py`): after the first `--` every argument is wrapped as a positional and the `--` becomes a mark that is dropped again, number-like arguments are wrapped (the 3.14 rule), and the value options use an action that puts a dropped `--` back. The wrapped text never reaches output. CHANGELOG and GUIDE updated | test_cli_parsing::test_unknown_options_and_double_dash_read_the_same_on_every_python (14 cases), test_option_values_read_the_same_on_every_python (9), test_a_rewritten_argument_never_shows_in_output, test_stop_may_come_after_an_option (2 new orders); test_argv (28 tests that pin each part on any Python) |
+| e/S2: nothing pinned that `quote()` ignores a subclass's own `__str__`; the mutant `str(value)` survived | test subclasses whose `__str__` returns other text or raises: `quote()`, `date_range(step=)`, `date_range(invalid=)` and `shift(step=)` report `'nope'` with `ValueError` | test_scrub::test_quote_ignores_the_str_of_a_subclass, test_errors_quote_a_subclass_as_its_plain_text (6 cases) |
+
+Differential check of the command line, run in process with `main()` on CPython 3.10.19,
+3.11.5, 3.12.12, 3.13.2, 3.14.2 and 3.14.2 free-threaded at df4248d: every command line of
+up to 4 arguments over 12 tokens (22,621), of up to 3 over 20 tokens (8,421) and of up to 3
+over 22 tokens aimed at option values (11,155), with exit status, standard output and the
+last error line compared against 3.13.2: 0 differences, and no rewritten text in any output.
+At a77c968, 3.11.5 differed from 3.13.2 on 1,842 command lines of the first set. Over the
+third set, df4248d on 3.14.2 differs from a77c968 on 3.14.2 only where `-s` follows `--` (44
+command lines): it is now START or STOP, as documented.
+
+Mutants of this round, each applied alone with the argv and CLI test files run with `-x`, all
+killed on CPython 3.13.2 (the first eleven also on 3.11.5):
+
+| Mutant | Caught by |
+| --- | --- |
+| `quote()` reads `str(value)` (S2) | test_scrub::test_quote_ignores_the_str_of_a_subclass |
+| no STOP taken from the extras | test_argv::test_late_stop_takes_the_first_positional |
+| number rule of 3.10 to 3.13 | test_argv::test_prepare_wraps_what_starts_like_a_negative_number[-1x] |
+| dropped `--` value not put back | test_argv::test_value_puts_back_a_dropped_double_dash |
+| mark left among the extras | test_argv::test_settle_unwraps_values_and_drops_the_mark |
+| wrapped option value not unwrapped | test_argv::test_settle_unwraps_values_and_drops_the_mark |
+| arguments after `--` not wrapped | test_argv::test_prepare_wraps_everything_after_the_first_double_dash |
+| `plain()` returns the wrapped text | test_argv::test_prepare_wraps_everything_after_the_first_double_dash |
+| mark spelled `--` | test_argv::test_prepare_wraps_everything_after_the_first_double_dash |
+| START and STOP read without unwrapping | test_cli_parsing::test_stop_may_come_after_an_option[options before double dash] |
+| COUNT read without unwrapping | test_option_values_read_the_same_on_every_python[number-like count] |
+| type error of a dropped `--` not turned into an argparse error | test_argv::test_value_reads_a_dropped_double_dash_with_its_type |
+| bad late STOP raised instead of reported | test_argv::test_take_stop_reports_a_bad_stop_as_argparse_would |
+
+Interpreters at df4248d: wheel and sdist built from a clean clone (`twine check --strict`
+passes both), the wheel installed in a fresh venv per interpreter, the sdist's suite run
+against it with the fetched RFC texts. CPython 3.10.19, 3.11.5, 3.12.12, 3.13.2, 3.14.2 and
+3.14.2 free-threaded gave 2183 passed and 1 skipped each (the opt-in e2e test), exit 0, and
+the doctests pass on all six.
+
+Gates on this PC after the round (CPython 3.13.2, `STEPDATES_E2E=1`), each command on its
+own: `ruff format --check .`, `ruff check .`, `mypy --strict src`, `mypy --strict src tests`
+and `pytest` (2148 passed, 23 skipped: this interpreter has no time zone database and the
+working tree no fetched RFC texts; the interpreter runs above have both) all exit 0.
+
 ## Disputed findings
 
-None in rounds 1 to 3.
+None in rounds 1 to 4.
 
 ## Independent review (item 16)
 
