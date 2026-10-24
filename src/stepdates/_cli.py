@@ -7,10 +7,10 @@ import errno
 import os
 import re
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import date, datetime
 from gettext import gettext
-from typing import NoReturn, TypeVar
+from typing import NoReturn
 
 from stepdates import __version__
 from stepdates._argv import Value, late_stop, plain, prepare, settle
@@ -19,7 +19,6 @@ from stepdates._range import date_range
 from stepdates._step import MAX_DIGITS
 
 _COUNT = re.compile(rf"[+-]?[0-9]{{1,{MAX_DIGITS}}}")
-_T = TypeVar("_T")
 
 
 def _when(text: str) -> date:
@@ -56,12 +55,16 @@ class _Parser(argparse.ArgumentParser):
         """The tool's own messages, whose values are already quoted."""
         super().error(bound(message))
 
-    def convert(self, action: argparse.Action, kind: Callable[[str], _T], text: str) -> _T:
-        """``text`` read as argparse reads the value of ``action``, with its error message."""
-        try:
-            return kind(text)
-        except argparse.ArgumentTypeError as error:
-            self.error(str(argparse.ArgumentError(action, str(error))))
+    def take_stop(self, args: argparse.Namespace, extras: list[str]) -> list[str]:
+        """Fill a missing STOP from ``extras`` as Python 3.12 and later do; returns the rest."""
+        if args.stop is None:
+            stop, extras = late_stop(extras)
+            if stop is not None:
+                try:
+                    args.stop = _when(stop)
+                except argparse.ArgumentTypeError as error:
+                    self.error(str(argparse.ArgumentError(self.stop, str(error))))
+        return extras
 
 
 def _parser() -> _Parser:
@@ -112,11 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args, extras = parser.parse_known_intermixed_args(
         prepare(sys.argv[1:] if argv is None else argv)
     )
-    extras = settle(args, extras)
-    if args.stop is None:
-        stop, extras = late_stop(extras)
-        if stop is not None:
-            args.stop = parser.convert(parser.stop, _when, stop)
+    extras = parser.take_stop(args, settle(args, extras))
     if extras:  # listed here rather than by argparse, which joins them all whole
         parser.fail(gettext("unrecognized arguments: %s") % listing([plain(e) for e in extras]))
     if args.format:
